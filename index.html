@@ -1,233 +1,607 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard Financeiro</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
-    .tab-button.active { border-color: #3b82f6; background-color: #3b82f6; color: white; }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    .loader { border: 8px solid #f3f3f3; border-top: 8px solid #3b82f6; border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-  </style>
-</head>
-<body class="p-4 md:p-8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GNA Mensal - Centro de Custos</title>
+    
+    <!-- Google Fonts: Montserrat -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
 
-  <div id="loading-screen" class="fixed inset-0 bg-white bg-opacity-90 flex flex-col justify-center items-center z-50">
-    <div class="loader"></div>
-    <p class="mt-4 text-lg text-slate-700">Carregando dados da planilha...</p>
-  </div>
+    <!-- Biblioteca de Gráficos Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- Biblioteca D3.js para facilitar o carregamento e parsing de CSV -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
 
-  <div id="dashboard-container" class="max-w-7xl mx-auto hidden">
-    <header class="mb-6">
-      <h1 class="text-3xl font-bold text-slate-800">Dashboard Financeiro</h1>
-      <p class="text-slate-600">Análise de Despesas por Centro de Custo</p>
-    </header>
-
-    <div class="mb-6 bg-white p-4 rounded-lg shadow-sm">
-      <label for="month-filter" class="block text-sm font-medium text-slate-700 mb-2">Filtrar por Mês:</label>
-      <select id="month-filter" class="w-full md:w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-        <option value="all">Todo o período</option>
-      </select>
-    </div>
-
-    <div class="mb-4 border-b border-slate-200">
-      <nav class="flex flex-wrap -mb-px" id="tab-buttons">
-        <button data-tab="cc1000" class="tab-button active text-slate-600 hover:text-blue-600 py-4 px-6 border-b-2 font-medium text-sm transition-colors duration-200">CC 1000 - Empreendimentos</button>
-        <button data-tab="cc2000" class="tab-button text-slate-600 hover:text-blue-600 py-4 px-6 border-b-2 font-medium text-sm transition-colors duration-200">CC 2000 - Matriz</button>
-        <button data-tab="cc2002" class="tab-button text-slate-600 hover:text-blue-600 py-4 px-6 border-b-2 font-medium text-sm transition-colors duration-200">CC 2002 - Novos Negócios</button>
-        <button data-tab="total" class="tab-button text-slate-600 hover:text-blue-600 py-4 px-6 border-b-2 font-medium text-sm transition-colors duration-200">Total Geral</button>
-        <button data-tab="chart" class="tab-button text-slate-600 hover:text-blue-600 py-4 px-6 border-b-2 font-medium text-sm transition-colors duration-200">Gráfico Comparativo</button>
-      </nav>
-    </div>
-
-    <div id="tab-contents">
-      <div id="cc1000" class="tab-content active p-4 bg-white rounded-lg shadow"></div>
-      <div id="cc2000" class="tab-content p-4 bg-white rounded-lg shadow"></div>
-      <div id="cc2002" class="tab-content p-4 bg-white rounded-lg shadow"></div>
-      <div id="total" class="tab-content p-4 bg-white rounded-lg shadow"></div>
-      <div id="chart" class="tab-content p-4 bg-white rounded-lg shadow" style="height: 400px;">
-        <canvas id="mainChart"></canvas>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.2/papaparse.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js" onload="initializeDashboard()"></script>
-
-  <script>
-  function initializeDashboard() {
-    const URLS = {
-      '1000': 'https://docs.google.com/spreadsheets/d/e/.../pub?gid=...&single=true&output=csv',
-      '2000': 'https://docs.google.com/spreadsheets/d/e/.../pub?gid=...&single=true&output=csv',
-      '2002': 'https://docs.google.com/spreadsheets/d/e/.../pub?gid=...&single=true&output=csv'
-    };
-    let allData = [], mainChartInstance = null;
-
-    const monthFilter = document.getElementById('month-filter');
-    const tabButtonsContainer = document.getElementById('tab-buttons');
-    const tabContentsContainer = document.getElementById('tab-contents');
-    const loadingScreen = document.getElementById('loading-screen');
-    const dashboardContainer = document.getElementById('dashboard-container');
-
-    function formatCurrency(value) {
-      if (typeof value !== 'number') return 'R$ 0,00';
-      return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    }
-
-    function parseValue(str) {
-      if (!str || typeof str !== 'string') return 0;
-      return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
-    }
-
-    function monthNameToDate(monthName) {
-      const map = { janeiro:0, fevereiro:1, março:2, abril:3, maio:4, junho:5, julho:6, agosto:7, setembro:8, outubro:9, novembro:10, dezembro:11 };
-      const idx = map[monthName.toLowerCase().trim()];
-      return typeof idx === 'number' ? new Date(2024, idx, 1) : null;
-    }
-
-    async function fetchAndProcessData() {
-      if (!window.Papa || !window.Chart) {
-        console.error('Bibliotecas não carregadas.');
-        loadingScreen.innerHTML = '<p class="text-red-500 font-bold">Erro ao carregar bibliotecas.</p>';
-        return;
-      }
-
-      try {
-        const promises = Object.entries(URLS).map(([cc, url]) => new Promise((res, rej) => {
-          if (!url.startsWith('https://')) return res([]);
-          Papa.parse(url, {
-            download: true,
-            header: true,
-            skipEmptyLines: true,
-            dynamicTyping: true,
-            complete: results => {
-              const data = results.data.flatMap(row => Object.entries(row).flatMap(([col, val]) => {
-                const dateObj = monthNameToDate(col);
-                if (row['Plano financeiro'] && dateObj && val) {
-                  return [{ 'Plano Financeiro': row['Plano financeiro'], 'Centro de Custo': cc, 'ValorNumerico': parseValue(String(val)), 'DataObj': dateObj }];
-                }
-                return [];
-              }));
-              res(data);
-            },
-            error: err => rej(err)
-          });
-        }));
-
-        const all = await Promise.all(promises);
-        allData = all.flat();
-        if (!allData.length) throw new Error('Nenhum dado carregado.');
-
-        populateMonthFilter();
-        updateDashboard();
-        setupEventListeners();
-
-        loadingScreen.style.display = 'none';
-        dashboardContainer.classList.remove('hidden');
-      } catch (err) {
-        console.error(err);
-        loadingScreen.innerHTML = `<p class="text-red-500 font-bold">Falha ao carregar os dados.</p><p class="text-slate-600 mt-2">${err.message}</p>`;
-      }
-    }
-
-    function populateMonthFilter() {
-      const months = Array.from(new Set(allData.map(r => `${r.DataObj.getFullYear()}-${String(r.DataObj.getMonth()+1).padStart(2,'0')}`))).sort().reverse();
-      months.forEach(ms => {
-        const [yr, mo] = ms.split('-');
-        const opt = document.createElement('option');
-        opt.value = ms;
-        const d = new Date(yr, mo - 1);
-        opt.textContent = d.toLocaleString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
-        monthFilter.appendChild(opt);
-      });
-    }
-
-    function renderCCTab(cc, data) {
-      const container = document.getElementById(`cc${cc}`);
-      const filtered = data.filter(r => r['Centro de Custo'] === cc);
-      if (!filtered.length) return container.innerHTML = `<p class="text-slate-500">Nenhum dado para este período.</p>`;
-
-      const sums = filtered.reduce((acc, r) => (acc[r['Plano Financeiro']] = (acc[r['Plano Financeiro']] || 0) + r.ValorNumerico, acc), {});
-      const total = Object.values(sums).reduce((a,b) => a + b, 0);
-
-      let html = `<h3 class="text-xl font-semibold text-slate-800 mb-4">Total do Período: ${formatCurrency(total)}</h3><div class="overflow-x-auto"><table class="min-w-full"><thead class="bg-slate-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Plano Financeiro</th><th class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Valor</th></tr></thead><tbody>`;
-      Object.entries(sums).sort((a,b)=>b[1]-a[1]).forEach(([plan, val]) => {
-        html += `<tr><td class="px-6 py-4 text-sm font-medium text-slate-900">${plan}</td><td class="px-6 py-4 text-sm text-slate-600 text-right">${formatCurrency(val)}</td></tr>`;
-      });
-      container.innerHTML = html + '</tbody></table></div>';
-    }
-
-    function renderTotalTab(data) {
-      const container = document.getElementById('total');
-      if (!data.length) return container.innerHTML = `<p class="text-slate-500">Nenhum dado para este período.</p>`;
-
-      const sums = data.reduce((acc, r) => (acc[r['Plano Financeiro']] = (acc[r['Plano Financeiro']] || 0) + r.ValorNumerico, acc), {});
-      const total = Object.values(sums).reduce((a,b) => a + b, 0);
-
-      let html = `<div class="bg-blue-500 text-white p-6 rounded-lg shadow-lg mb-6"><h3 class="text-lg font-medium">Total Geral Consolidado</h3><p class="text-4xl font-bold">${formatCurrency(total)}</p></div><h4 class="text-lg font-semibold text-slate-800 mb-2">Detalhamento por Plano Financeiro</h4><div class="overflow-x-auto"><table class="min-w-full"><thead class="bg-slate-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Plano Financeiro</th><th class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Valor Total</th></tr></thead><tbody>`;
-      Object.entries(sums).sort((a,b)=>b[1]-a[1]).forEach(([plan, val]) => {
-        html += `<tr><td class="px-6 py-4 text-sm font-medium text-slate-900">${plan}</td><td class="px-6 py-4 text-sm text-slate-600 text-right">${formatCurrency(val)}</td></tr>`;
-      });
-      container.innerHTML = html + '</tbody></table></div>';
-    }
-
-    function renderChart(data) {
-      const ctx = document.getElementById('mainChart').getContext('2d');
-      const plans = [...new Set(data.map(r => r['Plano Financeiro']))].sort();
-      const ccs = ['1000','2000','2002'];
-      const colors = { '1000':'rgba(59,130,246,0.8)', '2000':'rgba(239,68,68,0.8)', '2002':'rgba(22,163,74,0.8)' };
-
-      const datasets = ccs.map(cc => ({
-        label: `CC ${cc}`,
-        data: plans.map(p => data.filter(r => r['Centro de Custo'] === cc && r['Plano Financeiro'] === p).reduce((sum, r) => sum + r.ValorNumerico, 0)),
-        backgroundColor: colors[cc]
-      }));
-
-      if (mainChartInstance) mainChartInstance.destroy();
-      mainChartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: { labels: plans, datasets },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            title: { display: true, text: 'Comparativo de Despesas por Plano Financeiro e CC', font: { size: 16 } },
-            tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y)}` } }
-          },
-          scales: { y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } } }
+    <style>
+        /* Paleta de Cores e Fontes - Young Empreendimentos */
+        :root {
+            --font-family: 'Montserrat', sans-serif;
+            --color-orange: #f37021; /* Cor principal da marca */
+            --color-dark-gray-main: #343a40; /* Cinza escuro para textos principais */
+            --color-light-gray: #f8f9fa;
+            --color-medium-gray: #e0e0e0;
+            --color-dark-gray-text: #333;
+            --color-text: #495057;
+            --color-bg: #fdfdfd;
+            --color-white: #ffffff;
+            --color-success: #2e7d32;
         }
-      });
-    }
 
-    function updateDashboard() {
-      const sel = monthFilter.value;
-      const filtered = sel === 'all' ? allData : allData.filter(r => `${r.DataObj.getFullYear()}-${String(r.DataObj.getMonth()+1).padStart(2,'0')}` === sel);
-      renderCCTab('1000', filtered);
-      renderCCTab('2000', filtered);
-      renderCCTab('2002', filtered);
-      renderTotalTab(filtered);
-      renderChart(filtered);
-    }
+        body {
+            font-family: var(--font-family);
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
 
-    function setupEventListeners() {
-      monthFilter.addEventListener('change', updateDashboard);
-      tabButtonsContainer.addEventListener('click', e => {
-        const btn = e.target.closest('.tab-button'); if (!btn) return;
-        tabButtonsContainer.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        tabContentsContainer.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        document.getElementById(btn.dataset.tab).classList.add('active');
-      });
-    }
+        .page-wrapper {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 1400px;
+            gap: 25px;
+            transition: all 0.3s ease-in-out;
+        }
 
-    fetchAndProcessData();
-  }
-  </script>
+        @media (min-width: 1024px) {
+            .page-wrapper {
+                flex-direction: row;
+            }
+        }
+        
+        .page-wrapper.chart-mode-active .summary-panel {
+            display: none;
+        }
+        
+        .page-wrapper.chart-mode-active .dashboard-container {
+            width: 100%;
+            max-width: 100%;
+        }
 
+
+        .dashboard-container {
+            flex-grow: 1;
+            background-color: var(--color-white);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 20px 25px;
+            background-color: var(--color-white);
+            border-bottom: 1px solid var(--color-medium-gray);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.8em;
+            font-weight: 700;
+            color: var(--color-dark-gray-main);
+        }
+
+        .filter-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .filter-container label {
+            font-weight: 600;
+            color: var(--color-text);
+        }
+
+        select {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            background-color: var(--color-white);
+            font-family: var(--font-family);
+            font-size: 0.95em;
+            cursor: pointer;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        select:hover {
+            border-color: var(--color-orange);
+        }
+        select:focus {
+            outline: none;
+            border-color: var(--color-orange);
+            box-shadow: 0 0 0 2px rgba(243, 112, 33, 0.2);
+        }
+
+        /* Abas de navegação */
+        .tab-nav {
+            display: flex;
+            background-color: var(--color-light-gray);
+            padding: 0 25px;
+            border-bottom: 1px solid var(--color-medium-gray);
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+
+        .tab-button {
+            padding: 15px 20px;
+            cursor: pointer;
+            border: none;
+            background-color: transparent;
+            font-size: 1em;
+            font-weight: 600;
+            color: var(--color-text);
+            position: relative;
+            transition: color 0.3s;
+        }
+
+        .tab-button:hover {
+            color: var(--color-orange);
+        }
+
+        .tab-button.active {
+            color: var(--color-orange);
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background-color: var(--color-orange);
+        }
+
+        /* Conteúdo das abas */
+        .tab-content {
+            padding: 25px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tab-pane { 
+            display: none; 
+        }
+        
+        .tab-pane.active { 
+            display: flex; 
+            flex-direction: column; 
+            flex-grow: 1;
+            animation: fadeIn 0.5s; 
+        }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Tabelas */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--color-medium-gray);
+        }
+
+        th {
+            background-color: var(--color-light-gray);
+            font-weight: 700;
+            color: var(--color-dark-gray-text);
+        }
+
+        td:last-child {
+            text-align: right;
+            font-weight: 600;
+            color: var(--color-success);
+        }
+        
+        /* Aba Total Geral */
+        .total-geral-container {
+            text-align: center;
+            padding: 20px;
+            background-color: #fff9f4;
+            border: 1px solid #fceadd;
+            border-radius: 10px;
+        }
+        
+        .total-geral-valor {
+            font-size: 3.5em;
+            font-weight: 700;
+            color: var(--color-dark-gray-main);
+            margin: 10px 0;
+        }
+
+        .total-geral-label {
+            font-size: 1.2em;
+            color: var(--color-orange);
+            margin: 0;
+        }
+
+        /* Painel de Resumo Lateral */
+        .summary-panel {
+            flex-basis: 320px;
+            flex-shrink: 0;
+            background: var(--color-white);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            padding: 25px;
+            align-self: flex-start;
+            transition: all 0.3s ease-in-out;
+        }
+        .summary-panel h3 {
+            margin-top: 0;
+            color: var(--color-dark-gray-main);
+            font-size: 1.4em;
+            border-bottom: 2px solid var(--color-orange);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--color-medium-gray);
+            font-size: 1.1em;
+        }
+        .summary-item span {
+            color: var(--color-text);
+        }
+        .summary-item strong {
+            color: var(--color-dark-gray-main);
+            font-weight: 700;
+        }
+        .summary-item.total {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px solid var(--color-dark-gray-main);
+            border-bottom: none;
+            font-size: 1.2em;
+        }
+        .summary-item.total strong {
+            color: var(--color-orange);
+        }
+        
+        /* Loader */
+        #loader {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.9); display: flex;
+            justify-content: center; align-items: center; z-index: 9999;
+            font-size: 1.5em; color: var(--color-orange); font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loader">Carregando dados...</div>
+
+    <div class="page-wrapper" style="display: none;">
+        <aside id="summary-panel" class="summary-panel"></aside>
+
+        <div class="dashboard-container">
+            <header>
+                <h1>GNA Mensal - Centro de Custos</h1>
+                <div class="filter-container">
+                    <label for="month-filter">Filtrar por Mês:</label>
+                    <select id="month-filter">
+                        <option value="all">Todo o Período</option>
+                    </select>
+                </div>
+            </header>
+
+            <nav class="tab-nav">
+                <button class="tab-button active" data-tab="cc1000">CC 1000</button>
+                <button class="tab-button" data-tab="cc2000">CC 2000</button>
+                <button class="tab-button" data-tab="cc2002">CC 2002</button>
+                <button class="tab-button" data-tab="total">Total Geral</button>
+                <button class="tab-button" data-tab="chart">Gráfico Comparativo</button>
+            </nav>
+
+            <main class="tab-content">
+                <div id="cc1000" class="tab-pane active"></div>
+                <div id="cc2000" class="tab-pane"></div>
+                <div id="cc2002" class="tab-pane"></div>
+                <div id="total" class="tab-pane"></div>
+                <div id="chart" class="tab-pane"></div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // URLs das fontes de dados
+            const dataSources = [
+                { url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1203541928&single=true&output=csv', cc: '1000' },
+                { url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1232512098&single=true&output=csv', cc: '2000' },
+                { url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1854195378&single=true&output=csv', cc: '2002' }
+            ];
+
+            let allData = [];
+            let currentTab = 'cc1000';
+
+            const loader = document.getElementById('loader');
+            const pageWrapper = document.querySelector('.page-wrapper');
+            const summaryPanel = document.getElementById('summary-panel');
+
+            function parseCurrency(currencyString) {
+                if (!currencyString || typeof currencyString !== 'string') return 0;
+                return Number(currencyString.replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+            }
+            
+            function formatCurrency(value) {
+                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+            }
+
+            async function loadAndProcessData() {
+                try {
+                    const promises = dataSources.map(source => d3.csv(source.url).then(data => ({ data, cc: source.cc })));
+                    const results = await Promise.all(promises);
+
+                    let processedData = [];
+                    let months = new Set();
+
+                    results.forEach(({ data, cc }) => {
+                        if (!data || !data.columns || data.length === 0) return;
+                        
+                        const planColumnName = data.columns[0];
+                        const monthHeaders = data.columns.slice(1);
+                        
+                        monthHeaders.forEach(month => months.add(month));
+
+                        data.forEach(row => {
+                            const planName = row[planColumnName];
+                            if (planName && planName.trim() !== '') {
+                                monthHeaders.forEach(month => {
+                                    const value = parseCurrency(row[month]);
+                                    processedData.push({
+                                        centroCusto: cc,
+                                        planoFinanceiro: planName.trim(),
+                                        mes: month,
+                                        valor: value
+                                    });
+                                });
+                            }
+                        });
+                    });
+                    
+                    allData = processedData;
+                    populateMonthFilter(Array.from(months));
+                    setupEventListeners();
+                    updateDashboard();
+
+                    loader.style.display = 'none';
+                    pageWrapper.style.display = 'flex';
+
+                } catch (error) {
+                    console.error('Erro ao carregar os dados:', error);
+                    loader.textContent = 'Falha ao carregar os dados.';
+                }
+            }
+
+            function populateMonthFilter(months) {
+                const monthFilter = document.getElementById('month-filter');
+                months.sort((a, b) => {
+                    if (!a || !b) return 0;
+                    const [m1, y1] = a.split('/');
+                    const [m2, y2] = b.split('/');
+                    if (!m1 || !y1 || !m2 || !y2) return 0;
+                    return new Date(y1, m1 - 1) - new Date(y2, m2 - 1);
+                });
+                months.forEach(month => {
+                    if(month) {
+                        const option = document.createElement('option');
+                        option.value = month;
+                        option.textContent = month;
+                        monthFilter.appendChild(option);
+                    }
+                });
+            }
+
+            function setupEventListeners() {
+                document.getElementById('month-filter').addEventListener('change', updateDashboard);
+                document.querySelector('.tab-nav').addEventListener('click', (e) => {
+                    if (e.target.classList.contains('tab-button') && e.target.dataset.tab !== currentTab) {
+                        currentTab = e.target.dataset.tab;
+                        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                        document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+                        
+                        e.target.classList.add('active');
+                        document.getElementById(currentTab).classList.add('active');
+                        
+                        if (currentTab === 'chart') {
+                            pageWrapper.classList.add('chart-mode-active');
+                        } else {
+                            pageWrapper.classList.remove('chart-mode-active');
+                        }
+
+                        updateDashboard();
+                    }
+                });
+            }
+
+            function updateDashboard() {
+                const selectedMonth = document.getElementById('month-filter').value;
+                
+                let filteredData = allData;
+                if (selectedMonth !== 'all') {
+                    filteredData = allData.filter(d => d.mes === selectedMonth);
+                }
+                
+                renderSummaryPanel(filteredData);
+                renderCCTable('1000', filteredData, selectedMonth);
+                renderCCTable('2000', filteredData, selectedMonth);
+                renderCCTable('2002', filteredData, selectedMonth);
+                renderTotalGeral(filteredData, selectedMonth);
+
+                if (currentTab === 'chart') {
+                    renderComparisonChart(filteredData);
+                }
+            }
+
+            function renderSummaryPanel(data) {
+                const container = document.getElementById('summary-panel');
+                const selectedMonth = document.getElementById('month-filter').value;
+                const periodText = selectedMonth === 'all' ? 'Todo o Período' : selectedMonth;
+
+                const total1000 = d3.sum(data.filter(d => d.centroCusto === '1000'), d => d.valor);
+                const total2000 = d3.sum(data.filter(d => d.centroCusto === '2000'), d => d.valor);
+                const total2002 = d3.sum(data.filter(d => d.centroCusto === '2002'), d => d.valor);
+                const grandTotal = total1000 + total2000 + total2002;
+
+                container.innerHTML = `
+                    <h3>Resumo (${periodText})</h3>
+                    <div class="summary-item">
+                        <span>CC 1000</span>
+                        <strong>${formatCurrency(total1000)}</strong>
+                    </div>
+                    <div class="summary-item">
+                        <span>CC 2000</span>
+                        <strong>${formatCurrency(total2000)}</strong>
+                    </div>
+                    <div class="summary-item">
+                        <span>CC 2002</span>
+                        <strong>${formatCurrency(total2002)}</strong>
+                    </div>
+                    <div class="summary-item total">
+                        <span>Total Geral</span>
+                        <strong>${formatCurrency(grandTotal)}</strong>
+                    </div>
+                `;
+            }
+
+            function renderCCTable(cc, data, selectedMonth) {
+                const container = document.getElementById(`cc${cc}`);
+                const ccData = data.filter(d => d.centroCusto === cc);
+                const groupedData = d3.rollup(ccData, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                
+                let tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor (${selectedMonth === 'all' ? 'Total' : selectedMonth})</th></tr></thead><tbody>`;
+                const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                sortedData.forEach(([key, value]) => {
+                    tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
+                });
+                tableHTML += '</tbody></table>';
+                container.innerHTML = tableHTML;
+            }
+
+            function renderTotalGeral(data, selectedMonth) {
+                const container = document.getElementById('total');
+                container.innerHTML = `<div class="total-geral-container"><div class="filter-container" style="justify-content: center;"><label for="total-cc-filter">Centro de Custo:</label><select id="total-cc-filter"><option value="all">Todos</option><option value="1000">CC 1000</option><option value="2000">CC 2000</option><option value="2002">CC 2002</option></select></div><p class="total-geral-label">Valor Total (${selectedMonth === 'all' ? 'Período Completo' : selectedMonth})</p><h2 id="total-geral-valor" class="total-geral-valor"></h2></div><div id="total-geral-table"></div>`;
+                document.getElementById('total-cc-filter').addEventListener('change', () => updateTotalView(data));
+                updateTotalView(data);
+            }
+            
+            function updateTotalView(data) {
+                const selectedMonth = document.getElementById('month-filter').value;
+                const ccFilterValue = document.getElementById('total-cc-filter').value;
+
+                let dataForView = data;
+                if (selectedMonth !== 'all') {
+                    dataForView = dataForView.filter(d => d.mes === selectedMonth);
+                }
+                if (ccFilterValue !== 'all') {
+                    dataForView = dataForView.filter(d => d.centroCusto === ccFilterValue);
+                }
+
+                document.getElementById('total-geral-valor').textContent = formatCurrency(d3.sum(dataForView, d => d.valor));
+                const groupedData = d3.rollup(dataForView, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                
+                let tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor Total</th></tr></thead><tbody>`;
+                const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                sortedData.forEach(([key, value]) => {
+                    tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
+                });
+                tableHTML += '</tbody></table>';
+                document.getElementById('total-geral-table').innerHTML = tableHTML;
+            }
+
+            function renderComparisonChart(data) {
+                const chartContainer = document.getElementById('chart');
+                chartContainer.innerHTML = `
+                    <div class="filter-container" style="margin-bottom: 20px; flex-shrink: 0;">
+                        <label for="chart-cc-filter">Visualizar Centro de Custo:</label>
+                        <select id="chart-cc-filter">
+                            <option value="all">Soma de Todos</option>
+                            <option value="1000">CC 1000</option>
+                            <option value="2000">CC 2000</option>
+                            <option value="2002">CC 2002</option>
+                        </select>
+                    </div>
+                    <div id="plotly-chart" style="width: 100%; height: 100%; flex-grow: 1;"></div>`;
+                
+                const chartCcFilter = document.getElementById('chart-cc-filter');
+                chartCcFilter.addEventListener('change', updateDashboard);
+
+                const selectedCc = chartCcFilter.value;
+                const chartDataForRender = (selectedCc === 'all') ? data : data.filter(d => d.centroCusto === selectedCc);
+
+                const groupedData = d3.rollup(chartDataForRender, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                
+                const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                const labels = sortedData.map(d => d[0]);
+                const values = sortedData.map(d => d[1]);
+                
+                // **CORRIGIDO**: Pega o valor da cor laranja do CSS para usar no gráfico
+                const orangeColor = getComputedStyle(document.documentElement).getPropertyValue('--color-orange').trim();
+
+                const plotData = [{
+                    x: labels,
+                    y: values,
+                    type: 'bar',
+                    marker: { color: orangeColor }, // Usa a variável com a cor resolvida
+                    hoverlabel: { bgcolor: 'var(--color-dark-gray-main)' }
+                }];
+
+                const layout = {
+                    title: {
+                        text: `Despesas por Plano Financeiro (${chartCcFilter.options[chartCcFilter.selectedIndex].text})`,
+                        font: { family: 'var(--font-family)', size: 18, color: 'var(--color-dark-gray-main)' }
+                    },
+                    xaxis: { 
+                        tickangle: -45,
+                        rangeslider: {
+                            visible: true,
+                            bgcolor: 'var(--color-light-gray)',
+                            bordercolor: 'var(--color-medium-gray)',
+                            borderwidth: 1,
+                            thickness: 0.1,
+                        }
+                    },
+                    yaxis: { 
+                        title: 'Valor Total',
+                        tickprefix: 'R$ ', 
+                        hoverformat: ',.2f'
+                    },
+                    margin: { b: 200, t: 60, l: 80, r: 40 },
+                    paper_bgcolor: 'transparent',
+                    plot_bgcolor: 'transparent'
+                };
+                
+                const config = { 
+                    responsive: true, 
+                    displaylogo: false,
+                    modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'toggleSpikelines']
+                };
+                
+                Plotly.newPlot('plotly-chart', plotData, layout, config);
+            }
+
+            loadAndProcessData();
+        });
+    </script>
 </body>
 </html>
