@@ -97,6 +97,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            flex-wrap: wrap;
         }
 
         .filter-container label {
@@ -395,12 +396,13 @@
 
             function populateMonthFilter(months) {
                 const monthFilter = document.getElementById('month-filter');
+                // **MODIFICADO**: Ordena os meses em ordem decrescente (mais recente primeiro)
                 months.sort((a, b) => {
                     if (!a || !b) return 0;
                     const [m1, y1] = a.split('/');
                     const [m2, y2] = b.split('/');
                     if (!m1 || !y1 || !m2 || !y2) return 0;
-                    return new Date(y1, m1 - 1) - new Date(y2, m2 - 1);
+                    return new Date(y2, m2 - 1) - new Date(y1, m1 - 1);
                 });
                 months.forEach(month => {
                     if(month) {
@@ -443,10 +445,10 @@
                 }
                 
                 renderSummaryPanel(filteredData);
-                renderCCTable('1000', filteredData, selectedMonth);
-                renderCCTable('2000', filteredData, selectedMonth);
-                renderCCTable('2002', filteredData, selectedMonth);
-                renderTotalGeral(filteredData, selectedMonth);
+                renderCCTable('1000', filteredData);
+                renderCCTable('2000', filteredData);
+                renderCCTable('2002', filteredData);
+                renderTotalGeral(filteredData);
 
                 if (currentTab === 'chart') {
                     renderComparisonChart(filteredData);
@@ -484,50 +486,145 @@
                 `;
             }
 
-            function renderCCTable(cc, data, selectedMonth) {
+            function renderCCTable(cc, data) {
                 const container = document.getElementById(`cc${cc}`);
                 const ccData = data.filter(d => d.centroCusto === cc);
-                const groupedData = d3.rollup(ccData, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                // **MODIFICADO**: Garante que "Todos" seja a primeira opção
+                const uniquePlans = ['Todos', ...[...new Set(ccData.map(d => d.planoFinanceiro))].sort()];
+
+                container.innerHTML = `
+                    <div class="filter-container" style="margin-bottom: 20px;">
+                        <label for="plan-filter-${cc}">Plano Financeiro:</label>
+                        <select id="plan-filter-${cc}">
+                            ${uniquePlans.map(p => `<option value="${p}">${p}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="table-container-${cc}"></div>
+                `;
+
+                const planFilter = document.getElementById(`plan-filter-${cc}`);
+                planFilter.addEventListener('change', () => updateTableForCC(cc, ccData));
                 
-                let tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor (${selectedMonth === 'all' ? 'Total' : selectedMonth})</th></tr></thead><tbody>`;
-                const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
-                sortedData.forEach(([key, value]) => {
-                    tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
-                });
-                tableHTML += '</tbody></table>';
-                container.innerHTML = tableHTML;
+                updateTableForCC(cc, ccData);
             }
 
-            function renderTotalGeral(data, selectedMonth) {
+            function updateTableForCC(cc, ccData) {
+                const tableContainer = document.getElementById(`table-container-${cc}`);
+                const selectedPlan = document.getElementById(`plan-filter-${cc}`).value;
+                const selectedMonth = document.getElementById('month-filter').value;
+
+                let dataForTable = ccData;
+                if (selectedPlan !== 'Todos') {
+                    dataForTable = ccData.filter(d => d.planoFinanceiro === selectedPlan);
+                }
+                
+                let tableHTML = '';
+                
+                if (selectedPlan !== 'Todos' && selectedMonth === 'all') {
+                    tableHTML = `<table><thead><tr><th>Mês</th><th>Valor</th></tr></thead><tbody>`;
+                    const planDataByMonth = d3.rollup(dataForTable, v => d3.sum(v, d => d.valor), d => d.mes);
+                    const sortedMonths = Array.from(planDataByMonth.keys()).sort((a, b) => {
+                        const [m1, y1] = a.split('/'); const [m2, y2] = b.split('/');
+                        return new Date(y2, m2 - 1) - new Date(y1, m1 - 1); // Mantém decrescente
+                    });
+                    sortedMonths.forEach(month => {
+                        tableHTML += `<tr><td>${month}</td><td>${formatCurrency(planDataByMonth.get(month))}</td></tr>`;
+                    });
+                } else {
+                    const headerText = selectedMonth === 'all' ? 'Total' : selectedMonth;
+                    tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor (${headerText})</th></tr></thead><tbody>`;
+                    const groupedData = d3.rollup(dataForTable, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                    const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                    sortedData.forEach(([key, value]) => {
+                        tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
+                    });
+                }
+
+                tableHTML += '</tbody></table>';
+                tableContainer.innerHTML = tableHTML;
+            }
+
+            function renderTotalGeral(data) {
                 const container = document.getElementById('total');
-                container.innerHTML = `<div class="total-geral-container"><div class="filter-container" style="justify-content: center;"><label for="total-cc-filter">Centro de Custo:</label><select id="total-cc-filter"><option value="all">Todos</option><option value="1000">CC 1000</option><option value="2000">CC 2000</option><option value="2002">CC 2002</option></select></div><p class="total-geral-label">Valor Total (${selectedMonth === 'all' ? 'Período Completo' : selectedMonth})</p><h2 id="total-geral-valor" class="total-geral-valor"></h2></div><div id="total-geral-table"></div>`;
-                document.getElementById('total-cc-filter').addEventListener('change', () => updateTotalView(data));
+                const selectedMonth = document.getElementById('month-filter').value;
+
+                container.innerHTML = `
+                    <div class="total-geral-container">
+                        <div class="filter-container" style="justify-content: center; margin-bottom: 20px;">
+                            <label for="total-cc-filter">Centro de Custo:</label>
+                            <select id="total-cc-filter">
+                                <option value="all">Todos</option><option value="1000">CC 1000</option>
+                                <option value="2000">CC 2000</option><option value="2002">CC 2002</option>
+                            </select>
+                            <label for="total-plan-filter">Plano Financeiro:</label>
+                            <select id="total-plan-filter"></select>
+                        </div>
+                        <p class="total-geral-label">Valor Total (${selectedMonth === 'all' ? 'Período Completo' : selectedMonth})</p>
+                        <h2 id="total-geral-valor" class="total-geral-valor"></h2>
+                    </div>
+                    <div id="total-geral-table"></div>`;
+
+                const ccFilter = document.getElementById('total-cc-filter');
+                const planFilter = document.getElementById('total-plan-filter');
+
+                ccFilter.addEventListener('change', () => updateTotalView(data));
+                planFilter.addEventListener('change', () => updateTotalView(data));
+                
                 updateTotalView(data);
             }
             
             function updateTotalView(data) {
                 const selectedMonth = document.getElementById('month-filter').value;
                 const ccFilterValue = document.getElementById('total-cc-filter').value;
-
-                let dataForView = data;
-                if (selectedMonth !== 'all') {
-                    dataForView = dataForView.filter(d => d.mes === selectedMonth);
-                }
+                
+                let dataForCC = selectedMonth === 'all' ? allData : allData.filter(d => d.mes === selectedMonth);
                 if (ccFilterValue !== 'all') {
-                    dataForView = dataForView.filter(d => d.centroCusto === ccFilterValue);
+                    dataForCC = dataForCC.filter(d => d.centroCusto === ccFilterValue);
+                }
+
+                const planFilter = document.getElementById('total-plan-filter');
+                const currentPlanValue = planFilter.value;
+                // **MODIFICADO**: Garante que "Todos" seja a primeira opção
+                const uniquePlans = ['Todos', ...[...new Set(dataForCC.map(d => d.planoFinanceiro))].sort()];
+                planFilter.innerHTML = uniquePlans.map(p => `<option value="${p}">${p}</option>`).join('');
+                if (uniquePlans.includes(currentPlanValue)) {
+                    planFilter.value = currentPlanValue;
+                }
+
+                const planFilterValue = planFilter.value;
+                let dataForView = dataForCC;
+                if (planFilterValue !== 'Todos') {
+                    dataForView = dataForCC.filter(d => d.planoFinanceiro === planFilterValue);
                 }
 
                 document.getElementById('total-geral-valor').textContent = formatCurrency(d3.sum(dataForView, d => d.valor));
-                const groupedData = d3.rollup(dataForView, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
                 
-                let tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor Total</th></tr></thead><tbody>`;
-                const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
-                sortedData.forEach(([key, value]) => {
-                    tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
-                });
+                const tableContainer = document.getElementById('total-geral-table');
+                let tableHTML = '';
+
+                if (planFilterValue !== 'Todos' && selectedMonth === 'all') {
+                    tableHTML = `<table><thead><tr><th>Mês</th><th>Valor</th></tr></thead><tbody>`;
+                    const planDataByMonth = d3.rollup(dataForView, v => d3.sum(v, d => d.valor), d => d.mes);
+                    const sortedMonths = Array.from(planDataByMonth.keys()).sort((a, b) => {
+                        const [m1, y1] = a.split('/'); const [m2, y2] = b.split('/');
+                        return new Date(y2, m2 - 1) - new Date(y1, m1 - 1); // Mantém decrescente
+                    });
+                    sortedMonths.forEach(month => {
+                        tableHTML += `<tr><td>${month}</td><td>${formatCurrency(planDataByMonth.get(month))}</td></tr>`;
+                    });
+                } else {
+                    const headerText = selectedMonth === 'all' ? 'Total' : selectedMonth;
+                    tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor (${headerText})</th></tr></thead><tbody>`;
+                    const groupedData = d3.rollup(dataForView, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                    const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                    sortedData.forEach(([key, value]) => {
+                        tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
+                    });
+                }
                 tableHTML += '</tbody></table>';
-                document.getElementById('total-geral-table').innerHTML = tableHTML;
+                tableContainer.innerHTML = tableHTML;
             }
+
 
             function renderComparisonChart(data) {
                 const chartContainer = document.getElementById('chart');
@@ -544,7 +641,7 @@
                     <div id="plotly-chart" style="width: 100%; height: 100%; flex-grow: 1;"></div>`;
                 
                 const chartCcFilter = document.getElementById('chart-cc-filter');
-                chartCcFilter.addEventListener('change', updateDashboard);
+                chartCcFilter.addEventListener('change', () => renderComparisonChart(data));
 
                 const selectedCc = chartCcFilter.value;
                 const chartDataForRender = (selectedCc === 'all') ? data : data.filter(d => d.centroCusto === selectedCc);
@@ -555,14 +652,13 @@
                 const labels = sortedData.map(d => d[0]);
                 const values = sortedData.map(d => d[1]);
                 
-                // **CORRIGIDO**: Pega o valor da cor laranja do CSS para usar no gráfico
                 const orangeColor = getComputedStyle(document.documentElement).getPropertyValue('--color-orange').trim();
 
                 const plotData = [{
                     x: labels,
                     y: values,
                     type: 'bar',
-                    marker: { color: orangeColor }, // Usa a variável com a cor resolvida
+                    marker: { color: orangeColor },
                     hoverlabel: { bgcolor: 'var(--color-dark-gray-main)' }
                 }];
 
