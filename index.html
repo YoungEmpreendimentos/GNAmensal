@@ -10,8 +10,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
 
-    <!-- Biblioteca de Gráficos Plotly.js -->
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- Biblioteca de Gráficos Plotly.js (Versão Atualizada) -->
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
     <!-- Biblioteca D3.js para facilitar o carregamento e parsing de CSV -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
 
@@ -310,6 +310,8 @@
                 <button class="tab-button" data-tab="cc2000">CC 2000</button>
                 <button class="tab-button" data-tab="cc2002">CC 2002</button>
                 <button class="tab-button" data-tab="total">Total Geral</button>
+                <button class="tab-button" data-tab="excluded">Planos Financeiros Excluídos</button>
+                <button class="tab-button" data-tab="excluded-chart">Gráfico Excluídos</button>
                 <button class="tab-button" data-tab="chart">Gráfico Comparativo</button>
             </nav>
 
@@ -318,6 +320,8 @@
                 <div id="cc2000" class="tab-pane"></div>
                 <div id="cc2002" class="tab-pane"></div>
                 <div id="total" class="tab-pane"></div>
+                <div id="excluded" class="tab-pane"></div>
+                <div id="excluded-chart" class="tab-pane"></div>
                 <div id="chart" class="tab-pane"></div>
             </main>
         </div>
@@ -331,8 +335,11 @@
                 { url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1232512098&single=true&output=csv', cc: '2000' },
                 { url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1854195378&single=true&output=csv', cc: '2002' }
             ];
+            
+            const excludedDataSourceUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=518334165&single=true&output=csv';
 
             let allData = [];
+            let excludedData = [];
             let currentTab = 'cc1000';
 
             const loader = document.getElementById('loader');
@@ -350,6 +357,7 @@
 
             async function loadAndProcessData() {
                 try {
+                    // Carrega dados principais
                     const promises = dataSources.map(source => d3.csv(source.url).then(data => ({ data, cc: source.cc })));
                     const results = await Promise.all(promises);
 
@@ -358,10 +366,8 @@
 
                     results.forEach(({ data, cc }) => {
                         if (!data || !data.columns || data.length === 0) return;
-                        
                         const planColumnName = data.columns[0];
                         const monthHeaders = data.columns.slice(1);
-                        
                         monthHeaders.forEach(month => months.add(month));
 
                         data.forEach(row => {
@@ -369,12 +375,7 @@
                             if (planName && planName.trim() !== '') {
                                 monthHeaders.forEach(month => {
                                     const value = parseCurrency(row[month]);
-                                    processedData.push({
-                                        centroCusto: cc,
-                                        planoFinanceiro: planName.trim(),
-                                        mes: month,
-                                        valor: value
-                                    });
+                                    processedData.push({ centroCusto: cc, planoFinanceiro: planName.trim(), mes: month, valor: value });
                                 });
                             }
                         });
@@ -382,6 +383,32 @@
                     
                     allData = processedData;
                     populateMonthFilter(Array.from(months));
+
+                    // Carrega dados dos planos excluídos
+                    try {
+                        const textData = await d3.text(excludedDataSourceUrl);
+                        const rows = d3.csvParseRows(textData);
+                        let processedExcluded = [];
+                        if (rows.length > 2) {
+                             for (let i = 2; i < rows.length; i++) {
+                                const row = rows[i];
+                                if (row[0] && row[1] && row[2]) {
+                                    processedExcluded.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
+                                }
+                                if (row[4] && row[5] && row[6]) {
+                                    processedExcluded.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
+                                }
+                                if (row[8] && row[9] && row[10]) {
+                                    processedExcluded.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
+                                }
+                            }
+                        }
+                        excludedData = processedExcluded;
+                    } catch (error) {
+                        console.error('Erro ao carregar ou processar dados dos planos excluídos:', error);
+                        document.getElementById('excluded').innerHTML = `<p style="color: red;">Não foi possível carregar os dados dos planos excluídos. Verifique a URL e o formato da planilha.</p>`;
+                    }
+
                     setupEventListeners();
                     updateDashboard();
 
@@ -389,14 +416,16 @@
                     pageWrapper.style.display = 'flex';
 
                 } catch (error) {
-                    console.error('Erro ao carregar os dados:', error);
+                    console.error('Erro ao carregar os dados principais:', error);
                     loader.textContent = 'Falha ao carregar os dados.';
                 }
             }
 
             function populateMonthFilter(months) {
                 const monthFilter = document.getElementById('month-filter');
-                // **MODIFICADO**: Ordena os meses em ordem decrescente (mais recente primeiro)
+                while (monthFilter.options.length > 1) {
+                    monthFilter.remove(1);
+                }
                 months.sort((a, b) => {
                     if (!a || !b) return 0;
                     const [m1, y1] = a.split('/');
@@ -425,12 +454,11 @@
                         e.target.classList.add('active');
                         document.getElementById(currentTab).classList.add('active');
                         
-                        if (currentTab === 'chart') {
+                        if (currentTab === 'chart' || currentTab === 'excluded-chart') {
                             pageWrapper.classList.add('chart-mode-active');
                         } else {
                             pageWrapper.classList.remove('chart-mode-active');
                         }
-
                         updateDashboard();
                     }
                 });
@@ -450,46 +478,39 @@
                 renderCCTable('2002', filteredData);
                 renderTotalGeral(filteredData);
 
-                if (currentTab === 'chart') {
+                if (currentTab === 'excluded') {
+                    renderExcludedTab();
+                } else if (currentTab === 'chart') {
                     renderComparisonChart(filteredData);
+                } else if (currentTab === 'excluded-chart') {
+                    renderExcludedChart();
                 }
+            }
+            
+            function getPeriodText() {
+                const selectedMonth = document.getElementById('month-filter').value;
+                return selectedMonth === 'all' ? 'Todo o Período' : selectedMonth;
             }
 
             function renderSummaryPanel(data) {
                 const container = document.getElementById('summary-panel');
-                const selectedMonth = document.getElementById('month-filter').value;
-                const periodText = selectedMonth === 'all' ? 'Todo o Período' : selectedMonth;
+                const periodText = getPeriodText();
 
                 const total1000 = d3.sum(data.filter(d => d.centroCusto === '1000'), d => d.valor);
                 const total2000 = d3.sum(data.filter(d => d.centroCusto === '2000'), d => d.valor);
                 const total2002 = d3.sum(data.filter(d => d.centroCusto === '2002'), d => d.valor);
                 const grandTotal = total1000 + total2000 + total2002;
 
-                container.innerHTML = `
-                    <h3>Resumo (${periodText})</h3>
-                    <div class="summary-item">
-                        <span>CC 1000</span>
-                        <strong>${formatCurrency(total1000)}</strong>
-                    </div>
-                    <div class="summary-item">
-                        <span>CC 2000</span>
-                        <strong>${formatCurrency(total2000)}</strong>
-                    </div>
-                    <div class="summary-item">
-                        <span>CC 2002</span>
-                        <strong>${formatCurrency(total2002)}</strong>
-                    </div>
-                    <div class="summary-item total">
-                        <span>Total Geral</span>
-                        <strong>${formatCurrency(grandTotal)}</strong>
-                    </div>
-                `;
+                container.innerHTML = `<h3>Resumo (${periodText})</h3>` +
+                    `<div class="summary-item"><span>CC 1000</span><strong>${formatCurrency(total1000)}</strong></div>` +
+                    `<div class="summary-item"><span>CC 2000</span><strong>${formatCurrency(total2000)}</strong></div>` +
+                    `<div class="summary-item"><span>CC 2002</span><strong>${formatCurrency(total2002)}</strong></div>` +
+                    `<div class="summary-item total"><span>Total Geral</span><strong>${formatCurrency(grandTotal)}</strong></div>`;
             }
 
             function renderCCTable(cc, data) {
                 const container = document.getElementById(`cc${cc}`);
                 const ccData = data.filter(d => d.centroCusto === cc);
-                // **MODIFICADO**: Garante que "Todos" seja a primeira opção
                 const uniquePlans = ['Todos', ...[...new Set(ccData.map(d => d.planoFinanceiro))].sort()];
 
                 container.innerHTML = `
@@ -499,92 +520,65 @@
                             ${uniquePlans.map(p => `<option value="${p}">${p}</option>`).join('')}
                         </select>
                     </div>
-                    <div id="table-container-${cc}"></div>
-                `;
+                    <div id="table-container-${cc}"></div>`;
 
-                const planFilter = document.getElementById(`plan-filter-${cc}`);
-                planFilter.addEventListener('change', () => updateTableForCC(cc, ccData));
-                
+                document.getElementById(`plan-filter-${cc}`).addEventListener('change', () => updateTableForCC(cc, ccData));
                 updateTableForCC(cc, ccData);
             }
 
             function updateTableForCC(cc, ccData) {
                 const tableContainer = document.getElementById(`table-container-${cc}`);
                 const selectedPlan = document.getElementById(`plan-filter-${cc}`).value;
-                const selectedMonth = document.getElementById('month-filter').value;
+                const periodText = getPeriodText();
 
                 let dataForTable = ccData;
                 if (selectedPlan !== 'Todos') {
                     dataForTable = ccData.filter(d => d.planoFinanceiro === selectedPlan);
                 }
                 
-                let tableHTML = '';
-                
-                if (selectedPlan !== 'Todos' && selectedMonth === 'all') {
-                    tableHTML = `<table><thead><tr><th>Mês</th><th>Valor</th></tr></thead><tbody>`;
-                    const planDataByMonth = d3.rollup(dataForTable, v => d3.sum(v, d => d.valor), d => d.mes);
-                    const sortedMonths = Array.from(planDataByMonth.keys()).sort((a, b) => {
-                        const [m1, y1] = a.split('/'); const [m2, y2] = b.split('/');
-                        return new Date(y2, m2 - 1) - new Date(y1, m1 - 1); // Mantém decrescente
-                    });
-                    sortedMonths.forEach(month => {
-                        tableHTML += `<tr><td>${month}</td><td>${formatCurrency(planDataByMonth.get(month))}</td></tr>`;
-                    });
-                } else {
-                    const headerText = selectedMonth === 'all' ? 'Total' : selectedMonth;
-                    tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor (${headerText})</th></tr></thead><tbody>`;
-                    const groupedData = d3.rollup(dataForTable, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
-                    const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
-                    sortedData.forEach(([key, value]) => {
-                        tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
-                    });
-                }
-
+                let tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor (${periodText === 'Todo o Período' ? 'Total' : periodText})</th></tr></thead><tbody>`;
+                const groupedData = d3.rollup(dataForTable, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                sortedData.forEach(([key, value]) => {
+                    tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
+                });
                 tableHTML += '</tbody></table>';
                 tableContainer.innerHTML = tableHTML;
             }
 
             function renderTotalGeral(data) {
                 const container = document.getElementById('total');
-                const selectedMonth = document.getElementById('month-filter').value;
+                const periodText = getPeriodText();
 
                 container.innerHTML = `
                     <div class="total-geral-container">
                         <div class="filter-container" style="justify-content: center; margin-bottom: 20px;">
                             <label for="total-cc-filter">Centro de Custo:</label>
-                            <select id="total-cc-filter">
-                                <option value="all">Todos</option><option value="1000">CC 1000</option>
-                                <option value="2000">CC 2000</option><option value="2002">CC 2002</option>
-                            </select>
+                            <select id="total-cc-filter"><option value="all">Todos</option><option value="1000">CC 1000</option><option value="2000">CC 2000</option><option value="2002">CC 2002</option></select>
                             <label for="total-plan-filter">Plano Financeiro:</label>
                             <select id="total-plan-filter"></select>
                         </div>
-                        <p class="total-geral-label">Valor Total (${selectedMonth === 'all' ? 'Período Completo' : selectedMonth})</p>
+                        <p class="total-geral-label">Valor Total (${periodText})</p>
                         <h2 id="total-geral-valor" class="total-geral-valor"></h2>
                     </div>
                     <div id="total-geral-table"></div>`;
 
-                const ccFilter = document.getElementById('total-cc-filter');
-                const planFilter = document.getElementById('total-plan-filter');
-
-                ccFilter.addEventListener('change', () => updateTotalView(data));
-                planFilter.addEventListener('change', () => updateTotalView(data));
-                
+                document.getElementById('total-cc-filter').addEventListener('change', () => updateTotalView(data));
+                document.getElementById('total-plan-filter').addEventListener('change', () => updateTotalView(data));
                 updateTotalView(data);
             }
             
             function updateTotalView(data) {
-                const selectedMonth = document.getElementById('month-filter').value;
+                const periodText = getPeriodText();
                 const ccFilterValue = document.getElementById('total-cc-filter').value;
                 
-                let dataForCC = selectedMonth === 'all' ? allData : allData.filter(d => d.mes === selectedMonth);
+                let dataForCC = data;
                 if (ccFilterValue !== 'all') {
                     dataForCC = dataForCC.filter(d => d.centroCusto === ccFilterValue);
                 }
 
                 const planFilter = document.getElementById('total-plan-filter');
                 const currentPlanValue = planFilter.value;
-                // **MODIFICADO**: Garante que "Todos" seja a primeira opção
                 const uniquePlans = ['Todos', ...[...new Set(dataForCC.map(d => d.planoFinanceiro))].sort()];
                 planFilter.innerHTML = uniquePlans.map(p => `<option value="${p}">${p}</option>`).join('');
                 if (uniquePlans.includes(currentPlanValue)) {
@@ -594,40 +588,88 @@
                 const planFilterValue = planFilter.value;
                 let dataForView = dataForCC;
                 if (planFilterValue !== 'Todos') {
-                    dataForView = dataForCC.filter(d => d.planoFinanceiro === planFilterValue);
+                    dataForView = dataForView.filter(d => d.planoFinanceiro === planFilterValue);
                 }
 
                 document.getElementById('total-geral-valor').textContent = formatCurrency(d3.sum(dataForView, d => d.valor));
                 
                 const tableContainer = document.getElementById('total-geral-table');
-                let tableHTML = '';
-
-                if (planFilterValue !== 'Todos' && selectedMonth === 'all') {
-                    tableHTML = `<table><thead><tr><th>Mês</th><th>Valor</th></tr></thead><tbody>`;
-                    const planDataByMonth = d3.rollup(dataForView, v => d3.sum(v, d => d.valor), d => d.mes);
-                    const sortedMonths = Array.from(planDataByMonth.keys()).sort((a, b) => {
-                        const [m1, y1] = a.split('/'); const [m2, y2] = b.split('/');
-                        return new Date(y2, m2 - 1) - new Date(y1, m1 - 1); // Mantém decrescente
-                    });
-                    sortedMonths.forEach(month => {
-                        tableHTML += `<tr><td>${month}</td><td>${formatCurrency(planDataByMonth.get(month))}</td></tr>`;
-                    });
-                } else {
-                    const headerText = selectedMonth === 'all' ? 'Total' : selectedMonth;
-                    tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor (${headerText})</th></tr></thead><tbody>`;
-                    const groupedData = d3.rollup(dataForView, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
-                    const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
-                    sortedData.forEach(([key, value]) => {
-                        tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
-                    });
-                }
+                let tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor (${periodText === 'Todo o Período' ? 'Total' : periodText})</th></tr></thead><tbody>`;
+                const groupedData = d3.rollup(dataForView, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                sortedData.forEach(([key, value]) => {
+                    tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
+                });
                 tableHTML += '</tbody></table>';
                 tableContainer.innerHTML = tableHTML;
+            }
+
+            function renderExcludedTab() {
+                const container = document.getElementById('excluded');
+                const uniqueCCs = ['Todos', ...new Set(excludedData.map(d => d.centroCusto))].sort();
+
+                container.innerHTML = `
+                    <div class="filter-container" style="margin-bottom: 20px;">
+                        <label for="excluded-cc-filter">Visualizar Centro de Custo:</label>
+                        <select id="excluded-cc-filter">
+                            ${uniqueCCs.map(cc => `<option value="${cc}">${cc === 'Todos' ? 'Todos' : `CC ${cc}`}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="excluded-table-container"></div>
+                `;
+
+                document.getElementById('excluded-cc-filter').addEventListener('change', updateExcludedTable);
+                updateExcludedTable();
+            }
+
+            function updateExcludedTable() {
+                const container = document.getElementById('excluded-table-container');
+                const selectedCC = document.getElementById('excluded-cc-filter').value;
+
+                let dataForTable = excludedData;
+                if (selectedCC !== 'Todos') {
+                    dataForTable = excludedData.filter(d => d.centroCusto === selectedCC);
+                }
+                
+                dataForTable.sort((a, b) => {
+                    const [d1, m1, y1] = a.data.split('/');
+                    const [d2, m2, y2] = b.data.split('/');
+                    return new Date(y2, m2 - 1, d2) - new Date(y1, m1 - 1, d1);
+                });
+
+                let tableHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Plano Financeiro</th>
+                                <th>Centro de Custo</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${dataForTable.map(row => `
+                                <tr>
+                                    <td>${row.data}</td>
+                                    <td>${row.planoFinanceiro}</td>
+                                    <td>${row.centroCusto}</td>
+                                    <td>${formatCurrency(row.valor)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                container.innerHTML = tableHTML;
             }
 
 
             function renderComparisonChart(data) {
                 const chartContainer = document.getElementById('chart');
+                const periodText = getPeriodText();
+                
+                const oldCcFilter = document.getElementById('chart-cc-filter');
+                const oldCcValue = oldCcFilter ? oldCcFilter.value : 'all';
+
                 chartContainer.innerHTML = `
                     <div class="filter-container" style="margin-bottom: 20px; flex-shrink: 0;">
                         <label for="chart-cc-filter">Visualizar Centro de Custo:</label>
@@ -640,60 +682,114 @@
                     </div>
                     <div id="plotly-chart" style="width: 100%; height: 100%; flex-grow: 1;"></div>`;
                 
-                const chartCcFilter = document.getElementById('chart-cc-filter');
-                chartCcFilter.addEventListener('change', () => renderComparisonChart(data));
+                const newCcFilter = document.getElementById('chart-cc-filter');
+                newCcFilter.value = oldCcValue; 
 
-                const selectedCc = chartCcFilter.value;
-                const chartDataForRender = (selectedCc === 'all') ? data : data.filter(d => d.centroCusto === selectedCc);
+                const updatePlot = () => {
+                    const selectedCc = newCcFilter.value;
+                    const chartDataForRender = (selectedCc === 'all') ? data : data.filter(d => d.centroCusto === selectedCc);
 
-                const groupedData = d3.rollup(chartDataForRender, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
-                
-                const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
-                const labels = sortedData.map(d => d[0]);
-                const values = sortedData.map(d => d[1]);
-                
-                const orangeColor = getComputedStyle(document.documentElement).getPropertyValue('--color-orange').trim();
+                    const groupedData = d3.rollup(chartDataForRender, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                    
+                    const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                    const labels = sortedData.map(d => d[0]);
+                    const originalValues = sortedData.map(d => d[1]);
+                    const valuesInThousands = originalValues.map(v => v / 1000);
+                    
+                    const orangeColor = getComputedStyle(document.documentElement).getPropertyValue('--color-orange').trim();
 
-                const plotData = [{
-                    x: labels,
-                    y: values,
-                    type: 'bar',
-                    marker: { color: orangeColor },
-                    hoverlabel: { bgcolor: 'var(--color-dark-gray-main)' }
-                }];
-
-                const layout = {
-                    title: {
-                        text: `Despesas por Plano Financeiro (${chartCcFilter.options[chartCcFilter.selectedIndex].text})`,
-                        font: { family: 'var(--font-family)', size: 18, color: 'var(--color-dark-gray-main)' }
-                    },
-                    xaxis: { 
-                        tickangle: -45,
-                        rangeslider: {
-                            visible: true,
-                            bgcolor: 'var(--color-light-gray)',
-                            bordercolor: 'var(--color-medium-gray)',
-                            borderwidth: 1,
-                            thickness: 0.1,
-                        }
-                    },
-                    yaxis: { 
-                        title: 'Valor Total',
-                        tickprefix: 'R$ ', 
-                        hoverformat: ',.2f'
-                    },
-                    margin: { b: 200, t: 60, l: 80, r: 40 },
-                    paper_bgcolor: 'transparent',
-                    plot_bgcolor: 'transparent'
+                    const plotData = [{ 
+                        x: labels, 
+                        y: valuesInThousands, 
+                        customdata: originalValues,
+                        hovertemplate: '<b>%{x}</b><br>Valor: R$ %{customdata:,.2f}<extra></extra>',
+                        type: 'bar', 
+                        marker: { color: orangeColor }
+                    }];
+                    const layout = {
+                        title: { text: `Despesas por Plano Financeiro (${newCcFilter.options[newCcFilter.selectedIndex].text}) - ${periodText}`, font: { family: 'var(--font-family)', size: 18, color: 'var(--color-dark-gray-main)' } },
+                        xaxis: { tickangle: -45, rangeslider: { visible: true, bgcolor: 'var(--color-light-gray)', bordercolor: 'var(--color-medium-gray)', borderwidth: 1, thickness: 0.1, } },
+                        yaxis: { 
+                            title: 'Valor (em mil R$)',
+                            showgrid: true,
+                            gridcolor: 'var(--color-medium-gray)'
+                        },
+                        margin: { b: 200, t: 60, l: 80, r: 40 },
+                        paper_bgcolor: 'transparent',
+                        plot_bgcolor: 'transparent'
+                    };
+                    const config = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'toggleSpikelines'] };
+                    
+                    Plotly.newPlot('plotly-chart', plotData, layout, config);
                 };
+
+                newCcFilter.addEventListener('change', updatePlot);
                 
-                const config = { 
-                    responsive: true, 
-                    displaylogo: false,
-                    modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'toggleSpikelines']
+                updatePlot();
+            }
+            
+            function renderExcludedChart() {
+                const chartContainer = document.getElementById('excluded-chart');
+                const uniqueCCs = ['Todos', ...new Set(excludedData.map(d => d.centroCusto))].sort();
+
+                const oldCcFilter = document.getElementById('excluded-chart-cc-filter');
+                const oldCcValue = oldCcFilter ? oldCcFilter.value : 'all';
+
+                chartContainer.innerHTML = `
+                    <div class="filter-container" style="margin-bottom: 20px; flex-shrink: 0;">
+                        <label for="excluded-chart-cc-filter">Visualizar Centro de Custo:</label>
+                        <select id="excluded-chart-cc-filter">
+                             ${uniqueCCs.map(cc => `<option value="${cc}">${cc === 'Todos' ? 'Todos' : `CC ${cc}`}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="plotly-excluded-chart" style="width: 100%; height: 100%; flex-grow: 1;"></div>`;
+                
+                const newCcFilter = document.getElementById('excluded-chart-cc-filter');
+                newCcFilter.value = oldCcValue;
+
+                const updatePlot = () => {
+                    const selectedCc = newCcFilter.value;
+                    let chartDataForRender = excludedData;
+                    if (selectedCc !== 'Todos') {
+                        chartDataForRender = excludedData.filter(d => d.centroCusto === selectedCc);
+                    }
+
+                    const groupedData = d3.rollup(chartDataForRender, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                    
+                    const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                    const labels = sortedData.map(d => d[0]);
+                    const originalValues = sortedData.map(d => d[1]);
+                    const valuesInThousands = originalValues.map(v => v / 1000);
+                    
+                    const orangeColor = getComputedStyle(document.documentElement).getPropertyValue('--color-orange').trim();
+
+                    const plotData = [{ 
+                        x: labels, 
+                        y: valuesInThousands,
+                        customdata: originalValues,
+                        hovertemplate: '<b>%{x}</b><br>Valor: R$ %{customdata:,.2f}<extra></extra>',
+                        type: 'bar', 
+                        marker: { color: orangeColor } 
+                    }];
+                    const layout = {
+                        title: { text: `Despesas por Plano Financeiro Excluído (${newCcFilter.options[newCcFilter.selectedIndex].text})`, font: { family: 'var(--font-family)', size: 18, color: 'var(--color-dark-gray-main)' } },
+                        xaxis: { tickangle: -45, rangeslider: { visible: true, bgcolor: 'var(--color-light-gray)', bordercolor: 'var(--color-medium-gray)', borderwidth: 1, thickness: 0.1, } },
+                        yaxis: { 
+                            title: 'Valor (em mil R$)',
+                            showgrid: true,
+                            gridcolor: 'var(--color-medium-gray)'
+                        },
+                        margin: { b: 200, t: 60, l: 80, r: 40 },
+                        paper_bgcolor: 'transparent',
+                        plot_bgcolor: 'transparent'
+                    };
+                    const config = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'toggleSpikelines'] };
+                    
+                    Plotly.newPlot('plotly-excluded-chart', plotData, layout, config);
                 };
-                
-                Plotly.newPlot('plotly-chart', plotData, layout, config);
+
+                newCcFilter.addEventListener('change', updatePlot);
+                updatePlot();
             }
 
             loadAndProcessData();
