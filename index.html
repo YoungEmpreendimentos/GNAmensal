@@ -333,10 +333,10 @@
             <header>
                 <h1>GNA Mensal - Centro de Custos</h1>
                 <div class="filter-container">
-                    <label for="month-filter">Filtrar por Mês:</label>
-                    <select id="month-filter">
-                        <option value="all">Todo o Período</option>
-                    </select>
+                    <label for="start-date-filter">De:</label>
+                    <input type="date" id="start-date-filter">
+                    <label for="end-date-filter">Até:</label>
+                    <input type="date" id="end-date-filter">
                 </div>
             </header>
 
@@ -364,15 +364,11 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // URLs das fontes de dados
-            const masterListUrls = {
-                '1000': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1203541928&single=true&output=csv',
-                '2000': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1232512098&single=true&output=csv',
-                '2002': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1854195378&single=true&output=csv'
-            };
-            
-            // **IMPORTANTE**: Substitua esta URL pela URL publicada da sua planilha "Dados Sienge"
+            // URL da planilha de dados diários (Sienge)
             const siengeDataUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1286766302&single=true&output=csv';
+            
+            // URL da planilha de planos excluídos
+            const excludedDataSourceUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=518334165&single=true&output=csv';
 
             let allData = [];
             let excludedData = [];
@@ -384,71 +380,72 @@
 
             function parseCurrency(currencyString) {
                 if (!currencyString || typeof currencyString !== 'string') return 0;
-                return Number(currencyString.replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+                return Number(String(currencyString).replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
             }
             
             function formatCurrency(value) {
                 return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
             }
-
-            function normalizeString(str) {
-                if (!str) return '';
-                return str
-                    .toLowerCase()
-                    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
-                    .replace(/\s+/g, ' ')
-                    .trim();
+            
+            function parseBrDate(dateStr) {
+                if (!dateStr || !/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) return null;
+                const [day, month, year] = dateStr.split('/');
+                return new Date(year, month - 1, day);
             }
 
             async function loadAndProcessData() {
                 try {
-                    // Carrega as listas mestras de planos financeiros
-                    const [list1000, list2000, list2002] = await Promise.all([
-                        d3.csv(masterListUrls['1000']),
-                        d3.csv(masterListUrls['2000']),
-                        d3.csv(masterListUrls['2002'])
-                    ]);
+                    let allDates = [];
 
-                    const validPlans1000 = new Set(list1000.map(row => normalizeString(row[list1000.columns[0]])));
-                    const validPlans2000 = new Set(list2000.map(row => normalizeString(row[list2000.columns[0]])));
-                    const validPlans2002 = new Set(list2002.map(row => normalizeString(row[list2002.columns[0]])));
-
-                    // Carrega e processa os dados diários do Sienge
-                    const siengeTextData = await d3.text(siengeDataUrl);
-                    const siengeRows = d3.csvParseRows(siengeTextData);
-                    let processedSienge = [];
-                    if (siengeRows.length > 2) {
-                        for (let i = 2; i < siengeRows.length; i++) {
-                            const row = siengeRows[i];
-                            if (row[0] && row[1] && row[2]) processedSienge.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
-                            if (row[4] && row[5] && row[6]) processedSienge.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
-                            if (row[8] && row[9] && row[10]) processedSienge.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
+                    // Carrega dados principais (Sienge)
+                    try {
+                        const siengeTextData = await d3.text(siengeDataUrl);
+                        const siengeRows = d3.csvParseRows(siengeTextData);
+                        let processedSienge = [];
+                        if (siengeRows.length > 2) {
+                            for (let i = 2; i < siengeRows.length; i++) {
+                                const row = siengeRows[i];
+                                if (row[0] && row[1] && row[2]) processedSienge.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
+                                if (row[4] && row[5] && row[6]) processedSienge.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
+                                if (row[8] && row[9] && row[10]) processedSienge.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
+                            }
                         }
+                        allData = processedSienge;
+                        allDates.push(...allData.map(d => parseBrDate(d.data)));
+                    } catch (error) {
+                         console.error('Erro ao carregar dados principais (Sienge):', error);
+                         ['cc1000', 'cc2000', 'cc2002', 'total', 'chart'].forEach(tabId => {
+                            document.getElementById(tabId).innerHTML = `<p style="color: red;">Não foi possível carregar os dados principais. Verifique a URL da planilha "Dados Sienge".</p>`;
+                         });
                     }
 
-                    // Separa os dados em "incluídos" e "excluídos"
-                    allData = [];
-                    excludedData = [];
-                    processedSienge.forEach(item => {
-                        const normalizedPlan = normalizeString(item.planoFinanceiro);
-                        let isValid = false;
-                        if (item.centroCusto === '1000' && validPlans1000.has(normalizedPlan)) isValid = true;
-                        else if (item.centroCusto === '2000' && validPlans2000.has(normalizedPlan)) isValid = true;
-                        else if (item.centroCusto === '2002' && validPlans2002.has(normalizedPlan)) isValid = true;
-
-                        if (isValid) {
-                            allData.push(item);
-                        } else {
-                            excludedData.push(item);
+                    // Carrega dados dos planos excluídos
+                    try {
+                        const excludedTextData = await d3.text(excludedDataSourceUrl);
+                        const excludedRows = d3.csvParseRows(excludedTextData);
+                        let processedExcluded = [];
+                        if (excludedRows.length > 2) {
+                             for (let i = 2; i < excludedRows.length; i++) {
+                                const row = excludedRows[i];
+                                if (row[0] && row[1] && row[2]) processedExcluded.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
+                                if (row[4] && row[5] && row[6]) processedExcluded.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
+                                if (row[8] && row[9] && row[10]) processedExcluded.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
+                            }
                         }
-                    });
-
-                    // Popula o filtro de mês com base nos dados incluídos
-                    const months = new Set(allData.map(d => {
-                        const date = new Date(d.data.split('/').reverse().join('-') + 'T00:00:00');
-                        return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-                    }));
-                    populateMonthFilter(Array.from(months));
+                        excludedData = processedExcluded;
+                        allDates.push(...excludedData.map(d => parseBrDate(d.data)));
+                    } catch (error) {
+                        console.error('Erro ao carregar dados dos planos excluídos:', error);
+                        document.getElementById('excluded').innerHTML = `<p style="color: red;">Não foi possível carregar os dados dos planos excluídos. Verifique a URL.</p>`;
+                    }
+                    
+                    const validDates = allDates.filter(d => d && !isNaN(d.getTime()));
+                    if(validDates.length > 0) {
+                        const minDate = new Date(Math.min.apply(null, validDates));
+                        const maxDate = new Date(Math.max.apply(null, validDates));
+                        document.getElementById('start-date-filter').value = minDate.toISOString().split('T')[0];
+                        document.getElementById('end-date-filter').value = maxDate.toISOString().split('T')[0];
+                    }
                     
                     setupEventListeners();
                     updateDashboard();
@@ -462,30 +459,10 @@
                 }
             }
 
-            function populateMonthFilter(months) {
-                const monthFilter = document.getElementById('month-filter');
-                while (monthFilter.options.length > 1) {
-                    monthFilter.remove(1);
-                }
-                months.sort((a, b) => {
-                    if (!a || !b) return 0;
-                    const [m1, y1] = a.split('/');
-                    const [m2, y2] = b.split('/');
-                    if (!m1 || !y1 || !m2 || !y2) return 0;
-                    return new Date(y2, m2 - 1) - new Date(y1, m1 - 1);
-                });
-                months.forEach(month => {
-                    if(month) {
-                        const option = document.createElement('option');
-                        option.value = month;
-                        option.textContent = month;
-                        monthFilter.appendChild(option);
-                    }
-                });
-            }
-
             function setupEventListeners() {
-                document.getElementById('month-filter').addEventListener('change', updateDashboard);
+                document.getElementById('start-date-filter').addEventListener('change', updateDashboard);
+                document.getElementById('end-date-filter').addEventListener('change', updateDashboard);
+
                 document.querySelector('.tab-nav').addEventListener('click', (e) => {
                     if (e.target.classList.contains('tab-button') && e.target.dataset.tab !== currentTab) {
                         currentTab = e.target.dataset.tab;
@@ -507,39 +484,57 @@
             }
 
             function updateDashboard() {
-                const selectedMonth = document.getElementById('month-filter').value;
+                const startDate = document.getElementById('start-date-filter').value;
+                const endDate = document.getElementById('end-date-filter').value;
                 
-                let filteredData = allData;
-                let filteredExcludedData = excludedData;
+                let dateFilteredData = allData;
+                let dateFilteredExcludedData = excludedData;
 
-                if (selectedMonth !== 'all') {
-                    const filterByMonth = d => {
-                        const date = new Date(d.data.split('/').reverse().join('-') + 'T00:00:00');
-                        const itemMonth = `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-                        return itemMonth === selectedMonth;
+                if (startDate && endDate) {
+                    const start = new Date(startDate);
+                    const end = new Date(endDate);
+                    end.setHours(23, 59, 59, 999);
+
+                    const filterByDate = d => {
+                        const itemDate = parseBrDate(d.data);
+                        return itemDate && itemDate >= start && itemDate <= end;
                     };
-                    filteredData = allData.filter(filterByMonth);
-                    filteredExcludedData = excludedData.filter(filterByMonth);
+
+                    dateFilteredData = allData.filter(filterByDate);
+                    dateFilteredExcludedData = excludedData.filter(filterByDate);
                 }
                 
-                renderSummaryPanel(filteredData);
+                renderSummaryPanel(dateFilteredData);
 
-                if (currentTab === 'cc1000' || currentTab === 'cc2000' || currentTab === 'cc2002') {
-                    renderCCTable(currentTab.replace('cc', ''), filteredData);
-                } else if (currentTab === 'total') {
-                    renderTotalGeral(filteredData);
-                } else if (currentTab === 'excluded') {
-                    renderExcludedTab(filteredExcludedData);
-                } else if (currentTab === 'chart') {
-                    renderComparisonChart(filteredData);
-                } else if (currentTab === 'excluded-chart') {
-                    renderExcludedChart(filteredExcludedData);
+                switch (currentTab) {
+                    case 'cc1000':
+                    case 'cc2000':
+                    case 'cc2002':
+                        renderCCTable(currentTab.replace('cc', ''), dateFilteredData);
+                        break;
+                    case 'total':
+                        renderTotalGeral(dateFilteredData);
+                        break;
+                    case 'excluded':
+                        renderExcludedTab(dateFilteredExcludedData);
+                        break;
+                    case 'chart':
+                        renderComparisonChart(dateFilteredData);
+                        break;
+                    case 'excluded-chart':
+                        renderExcludedChart(dateFilteredExcludedData);
+                        break;
                 }
             }
             
             function getPeriodText() {
-                const selectedMonth = document.getElementById('month-filter').value;
-                return selectedMonth === 'all' ? 'Todo o Período' : selectedMonth;
+                const startDate = document.getElementById('start-date-filter').value;
+                const endDate = document.getElementById('end-date-filter').value;
+                if (startDate && endDate) {
+                    const format = (dateStr) => new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR');
+                    return `${format(startDate)} a ${format(endDate)}`;
+                }
+                return 'Todo o Período';
             }
 
             function renderSummaryPanel(data) {
@@ -558,45 +553,58 @@
                     `<div class="summary-item total"><span>Total Geral</span><strong>${formatCurrency(grandTotal)}</strong></div>`;
             }
 
-            function renderCCTable(cc, data) {
-                 const container = document.getElementById(`cc${cc}`);
-                const ccData = data.filter(d => d.centroCusto === cc);
-                const uniquePlans = [...new Set(ccData.map(d => d.planoFinanceiro))].sort();
+            function createMultiSelectFilter(containerId, data, onFilterChange) {
+                const uniquePlans = [...new Set(data.map(d => d.planoFinanceiro))].sort();
 
+                const container = document.getElementById(containerId);
                 container.innerHTML = `
                     <div class="filter-container" style="margin-bottom: 20px;">
                         <label>Plano Financeiro:</label>
-                        <div class="multiselect" id="multiselect-container-${cc}">
-                            <button class="multiselect-btn" id="multiselect-btn-${cc}">Selecionar Planos</button>
-                            <div class="multiselect-options" id="multiselect-options-${cc}">
+                        <div class="multiselect" id="multiselect-container-${containerId}">
+                            <button class="multiselect-btn" id="multiselect-btn-${containerId}">Selecionar Planos</button>
+                            <div class="multiselect-options" id="multiselect-options-${containerId}">
                                 <label><input type="checkbox" value="all" checked> (Selecionar Todos)</label>
-                                ${uniquePlans.map(p => `<label><input type="checkbox" value="${p}"> ${p}</label>`).join('')}
+                                ${uniquePlans.map(p => `<label><input type="checkbox" value="${p}" checked> ${p}</label>`).join('')}
                             </div>
                         </div>
                     </div>
-                    <div id="table-container-${cc}"></div>`;
+                    <div id="table-container-${containerId}"></div>`;
 
-                const btn = document.getElementById(`multiselect-btn-${cc}`);
-                const optionsDiv = document.getElementById(`multiselect-options-${cc}`);
+                const btn = document.getElementById(`multiselect-btn-${containerId}`);
+                const optionsDiv = document.getElementById(`multiselect-options-${containerId}`);
                 
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     optionsDiv.classList.toggle('active');
                 });
                 
-                optionsDiv.addEventListener('change', () => updateTableForCC(cc, ccData));
-                updateTableForCC(cc, ccData);
+                optionsDiv.addEventListener('change', (e) => {
+                    const allCheckbox = optionsDiv.querySelector('input[value="all"]');
+                    const otherCheckboxes = optionsDiv.querySelectorAll('input:not([value="all"])');
+                    if (e.target.value === 'all') {
+                        otherCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                    } else {
+                        allCheckbox.checked = [...otherCheckboxes].every(cb => cb.checked);
+                    }
+                    onFilterChange();
+                });
+            }
+
+            function renderCCTable(cc, data) {
+                const tabId = `cc${cc}`;
+                createMultiSelectFilter(tabId, data.filter(d => d.centroCusto === cc), () => updateTableForCC(cc, data));
+                updateTableForCC(cc, data);
             }
 
             function updateTableForCC(cc, ccData) {
-                const tableContainer = document.getElementById(`table-container-${cc}`);
-                const optionsDiv = document.getElementById(`multiselect-options-${cc}`);
+                const tableContainer = document.getElementById(`table-container-cc${cc}`);
+                const optionsDiv = document.getElementById(`multiselect-options-cc${cc}`);
                 const selectedCheckboxes = optionsDiv.querySelectorAll('input[type="checkbox"]:checked');
                 const selectedPlans = Array.from(selectedCheckboxes).map(cb => cb.value);
 
-                let dataForTable = ccData;
+                let dataForTable = ccData.filter(d => d.centroCusto === cc);
                 if (!selectedPlans.includes('all')) {
-                    dataForTable = ccData.filter(d => selectedPlans.includes(d.planoFinanceiro));
+                    dataForTable = dataForTable.filter(d => selectedPlans.includes(d.planoFinanceiro));
                 }
                 
                 const periodText = getPeriodText();
@@ -611,28 +619,205 @@
             }
 
             function renderTotalGeral(data) {
-                // Similar a renderCCTable, mas para a aba Total
+                createMultiSelectFilter('total', data, () => updateTotalView(data));
+                updateTotalView(data);
             }
             
             function updateTotalView(data) {
-                // Similar a updateTableForCC, mas para a aba Total
+                const tableContainer = document.getElementById('table-container-total');
+                const optionsDiv = document.getElementById('multiselect-options-total');
+                const selectedCheckboxes = optionsDiv.querySelectorAll('input[type="checkbox"]:checked');
+                const selectedPlans = Array.from(selectedCheckboxes).map(cb => cb.value);
+
+                let dataForView = data;
+                if (!selectedPlans.includes('all')) {
+                    dataForView = data.filter(d => selectedPlans.includes(d.planoFinanceiro));
+                }
+                
+                const periodText = getPeriodText();
+                let tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Centro de Custo</th><th>Valor (${periodText})</th></tr></thead><tbody>`;
+                const groupedData = d3.rollup(dataForView, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro, d => d.centroCusto);
+                
+                let flatData = [];
+                groupedData.forEach((ccMap, plan) => {
+                    ccMap.forEach((value, cc) => {
+                        flatData.push({ plano: plan, centroCusto: cc, valor: value });
+                    });
+                });
+
+                flatData.sort((a, b) => b.valor - a.valor);
+
+                flatData.forEach(item => {
+                    tableHTML += `<tr><td>${item.plano}</td><td>${item.centroCusto}</td><td>${formatCurrency(item.valor)}</td></tr>`;
+                });
+                tableHTML += '</tbody></table>';
+                tableContainer.innerHTML = tableHTML;
             }
 
             function renderExcludedTab(data) {
-                 // Esta função agora usa o filtro multiselect também
+                createMultiSelectFilter('excluded', data, () => updateExcludedTable(data));
+                updateExcludedTable(data);
             }
 
             function updateExcludedTable(data) {
-                // Esta função agora usa o filtro multiselect também
+                const tableContainer = document.getElementById('table-container-excluded');
+                const optionsDiv = document.getElementById('multiselect-options-excluded');
+                const selectedCheckboxes = optionsDiv.querySelectorAll('input[type="checkbox"]:checked');
+                const selectedPlans = Array.from(selectedCheckboxes).map(cb => cb.value);
+
+                let dataForTable = data;
+                if (!selectedPlans.includes('all')) {
+                    dataForTable = data.filter(d => selectedPlans.includes(d.planoFinanceiro));
+                }
+                
+                dataForTable.sort((a, b) => parseBrDate(b.data) - parseBrDate(a.data));
+
+                let tableHTML = `
+                    <table>
+                        <thead>
+                            <tr><th>Data</th><th>Plano Financeiro</th><th>Centro de Custo</th><th>Valor</th></tr>
+                        </thead>
+                        <tbody>
+                            ${dataForTable.map(row => `
+                                <tr>
+                                    <td>${row.data}</td>
+                                    <td>${row.planoFinanceiro}</td>
+                                    <td>${row.centroCusto}</td>
+                                    <td>${formatCurrency(row.valor)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>`;
+                tableContainer.innerHTML = tableHTML;
             }
 
-
             function renderComparisonChart(data) {
-                // ... (código existente, sem alterações)
+                const chartContainer = document.getElementById('chart');
+                const periodText = getPeriodText();
+                
+                const oldCcFilter = document.getElementById('chart-cc-filter');
+                const oldCcValue = oldCcFilter ? oldCcFilter.value : 'all';
+
+                chartContainer.innerHTML = `
+                    <div class="filter-container" style="margin-bottom: 20px; flex-shrink: 0;">
+                        <label for="chart-cc-filter">Visualizar Centro de Custo:</label>
+                        <select id="chart-cc-filter">
+                            <option value="all">Soma de Todos</option>
+                            <option value="1000">CC 1000</option>
+                            <option value="2000">CC 2000</option>
+                            <option value="2002">CC 2002</option>
+                        </select>
+                    </div>
+                    <div id="plotly-chart" style="width: 100%; height: 100%; flex-grow: 1;"></div>`;
+                
+                const newCcFilter = document.getElementById('chart-cc-filter');
+                newCcFilter.value = oldCcValue; 
+
+                const updatePlot = () => {
+                    const selectedCc = newCcFilter.value;
+                    const chartDataForRender = (selectedCc === 'all') ? data : data.filter(d => d.centroCusto === selectedCc);
+
+                    const groupedData = d3.rollup(chartDataForRender, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                    
+                    const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                    const labels = sortedData.map(d => d[0]);
+                    const originalValues = sortedData.map(d => d[1]);
+                    const valuesInThousands = originalValues.map(v => v / 1000);
+                    
+                    const orangeColor = getComputedStyle(document.documentElement).getPropertyValue('--color-orange').trim();
+
+                    const plotData = [{ 
+                        x: labels, 
+                        y: valuesInThousands, 
+                        customdata: originalValues,
+                        hovertemplate: '<b>%{x}</b><br>Valor: R$ %{customdata:,.2f}<extra></extra>',
+                        type: 'bar', 
+                        marker: { color: orangeColor }
+                    }];
+                    const layout = {
+                        title: { text: `Despesas por Plano Financeiro (${newCcFilter.options[newCcFilter.selectedIndex].text}) - ${periodText}`, font: { family: 'var(--font-family)', size: 18, color: 'var(--color-dark-gray-main)' } },
+                        xaxis: { tickangle: -45, rangeslider: { visible: true, bgcolor: 'var(--color-light-gray)', bordercolor: 'var(--color-medium-gray)', borderwidth: 1, thickness: 0.1, } },
+                        yaxis: { 
+                            title: 'Valor (em mil R$)',
+                            showgrid: true,
+                            gridcolor: 'var(--color-medium-gray)'
+                        },
+                        margin: { b: 200, t: 60, l: 80, r: 40 },
+                        paper_bgcolor: 'transparent',
+                        plot_bgcolor: 'transparent'
+                    };
+                    const config = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'toggleSpikelines'] };
+                    
+                    Plotly.newPlot('plotly-chart', plotData, layout, config);
+                };
+
+                newCcFilter.addEventListener('change', updatePlot);
+                
+                updatePlot();
             }
             
             function renderExcludedChart(data) {
-                // ... (código existente, sem alterações)
+                const chartContainer = document.getElementById('excluded-chart');
+                const uniqueCCs = ['Todos', ...new Set(excludedData.map(d => d.centroCusto))].sort();
+
+                const oldCcFilter = document.getElementById('excluded-chart-cc-filter');
+                const oldCcValue = oldCcFilter ? oldCcFilter.value : 'all';
+
+                chartContainer.innerHTML = `
+                    <div class="filter-container" style="margin-bottom: 20px; flex-shrink: 0;">
+                        <label for="excluded-chart-cc-filter">Visualizar Centro de Custo:</label>
+                        <select id="excluded-chart-cc-filter">
+                             ${uniqueCCs.map(cc => `<option value="${cc}">${cc === 'Todos' ? 'Todos' : `CC ${cc}`}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="plotly-excluded-chart" style="width: 100%; height: 100%; flex-grow: 1;"></div>`;
+                
+                const newCcFilter = document.getElementById('excluded-chart-cc-filter');
+                newCcFilter.value = oldCcValue;
+
+                const updatePlot = () => {
+                    const selectedCc = newCcFilter.value;
+                    let chartDataForRender = data;
+                    if (selectedCc !== 'Todos') {
+                        chartDataForRender = data.filter(d => d.centroCusto === selectedCc);
+                    }
+
+                    const groupedData = d3.rollup(chartDataForRender, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
+                    
+                    const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                    const labels = sortedData.map(d => d[0]);
+                    const originalValues = sortedData.map(d => d[1]);
+                    const valuesInThousands = originalValues.map(v => v / 1000);
+                    
+                    const orangeColor = getComputedStyle(document.documentElement).getPropertyValue('--color-orange').trim();
+
+                    const plotData = [{ 
+                        x: labels, 
+                        y: valuesInThousands,
+                        customdata: originalValues,
+                        hovertemplate: '<b>%{x}</b><br>Valor: R$ %{customdata:,.2f}<extra></extra>',
+                        type: 'bar', 
+                        marker: { color: orangeColor } 
+                    }];
+                    const layout = {
+                        title: { text: `Despesas por Plano Financeiro Excluído (${newCcFilter.options[newCcFilter.selectedIndex].text})`, font: { family: 'var(--font-family)', size: 18, color: 'var(--color-dark-gray-main)' } },
+                        xaxis: { tickangle: -45, rangeslider: { visible: true, bgcolor: 'var(--color-light-gray)', bordercolor: 'var(--color-medium-gray)', borderwidth: 1, thickness: 0.1, } },
+                        yaxis: { 
+                            title: 'Valor (em mil R$)',
+                            showgrid: true,
+                            gridcolor: 'var(--color-medium-gray)'
+                        },
+                        margin: { b: 200, t: 60, l: 80, r: 40 },
+                        paper_bgcolor: 'transparent',
+                        plot_bgcolor: 'transparent'
+                    };
+                    const config = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'toggleSpikelines'] };
+                    
+                    Plotly.newPlot('plotly-excluded-chart', plotData, layout, config);
+                };
+
+                newCcFilter.addEventListener('change', updatePlot);
+                updatePlot();
             }
 
             // Fechar dropdowns de multiselect ao clicar fora
