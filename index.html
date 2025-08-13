@@ -415,7 +415,7 @@
                     } catch (error) {
                          console.error('Erro ao carregar dados principais (Sienge):', error);
                          ['cc1000', 'cc2000', 'cc2002', 'total', 'chart'].forEach(tabId => {
-                            document.getElementById(tabId).innerHTML = `<p style="color: red;">Não foi possível carregar os dados principais. Verifique a URL da planilha "Dados Sienge".</p>`;
+                             document.getElementById(tabId).innerHTML = `<p style="color: red;">Não foi possível carregar os dados principais. Verifique a URL da planilha "Dados Sienge".</p>`;
                          });
                     }
 
@@ -426,11 +426,11 @@
                         let processedExcluded = [];
                         if (excludedRows.length > 2) {
                              for (let i = 2; i < excludedRows.length; i++) {
-                                const row = excludedRows[i];
-                                if (row[0] && row[1] && row[2]) processedExcluded.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
-                                if (row[4] && row[5] && row[6]) processedExcluded.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
-                                if (row[8] && row[9] && row[10]) processedExcluded.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
-                            }
+                                 const row = excludedRows[i];
+                                 if (row[0] && row[1] && row[2]) processedExcluded.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
+                                 if (row[4] && row[5] && row[6]) processedExcluded.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
+                                 if (row[8] && row[9] && row[10]) processedExcluded.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
+                             }
                         }
                         excludedData = processedExcluded;
                         allDates.push(...excludedData.map(d => parseBrDate(d.data)));
@@ -473,11 +473,8 @@
                         document.getElementById(currentTab).classList.add('active');
                         
                         const isChartTab = currentTab === 'chart' || currentTab === 'excluded-chart';
-                        if (isChartTab) {
-                            pageWrapper.classList.add('chart-mode-active');
-                        } else {
-                            pageWrapper.classList.remove('chart-mode-active');
-                        }
+                        pageWrapper.classList.toggle('chart-mode-active', isChartTab);
+                        
                         updateDashboard();
                     }
                 });
@@ -504,7 +501,13 @@
                     dateFilteredExcludedData = excludedData.filter(filterByDate);
                 }
                 
-                renderSummaryPanel(dateFilteredData);
+                // Decide qual painel de resumo renderizar
+                const isExcludedTab = currentTab === 'excluded' || currentTab === 'excluded-chart';
+                if (isExcludedTab) {
+                    renderExcludedSummary(dateFilteredExcludedData);
+                } else {
+                    renderMainSummary(dateFilteredData);
+                }
 
                 switch (currentTab) {
                     case 'cc1000':
@@ -537,7 +540,7 @@
                 return 'Todo o Período';
             }
 
-            function renderSummaryPanel(data) {
+            function renderMainSummary(data) {
                 const container = document.getElementById('summary-panel');
                 const periodText = getPeriodText();
 
@@ -551,6 +554,22 @@
                     `<div class="summary-item"><span>CC 2000</span><strong>${formatCurrency(total2000)}</strong></div>` +
                     `<div class="summary-item"><span>CC 2002</span><strong>${formatCurrency(total2002)}</strong></div>` +
                     `<div class="summary-item total"><span>Total Geral</span><strong>${formatCurrency(grandTotal)}</strong></div>`;
+            }
+
+            function renderExcludedSummary(data) {
+                const container = document.getElementById('summary-panel');
+                const periodText = getPeriodText();
+
+                const total1000 = d3.sum(data.filter(d => d.centroCusto === '1000'), d => d.valor);
+                const total2000 = d3.sum(data.filter(d => d.centroCusto === '2000'), d => d.valor);
+                const total2002 = d3.sum(data.filter(d => d.centroCusto === '2002'), d => d.valor);
+                const grandTotal = total1000 + total2000 + total2002;
+
+                container.innerHTML = `<h3>Resumo Excluídos (${periodText})</h3>` +
+                    `<div class="summary-item"><span>CC 1000</span><strong>${formatCurrency(total1000)}</strong></div>` +
+                    `<div class="summary-item"><span>CC 2000</span><strong>${formatCurrency(total2000)}</strong></div>` +
+                    `<div class="summary-item"><span>CC 2002</span><strong>${formatCurrency(total2002)}</strong></div>` +
+                    `<div class="summary-item total"><span>Total Excluído</span><strong>${formatCurrency(grandTotal)}</strong></div>`;
             }
 
             function createMultiSelectFilter(containerId, data, onFilterChange) {
