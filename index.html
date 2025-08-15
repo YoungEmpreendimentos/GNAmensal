@@ -368,7 +368,7 @@
             const siengeDataUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1286766302&single=true&output=csv';
             
             // URL da planilha de planos excluídos
-            const excludedDataSourceUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=518334165&single=true&output=csv';
+            const excludedDataSourceUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9cEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=518334165&single=true&output=csv';
 
             let allData = [];
             let excludedData = [];
@@ -397,20 +397,51 @@
                 try {
                     let allDates = [];
 
-                    // Carrega dados principais (Sienge)
-                    try {
-                        const siengeTextData = await d3.text(siengeDataUrl);
-                        const siengeRows = d3.csvParseRows(siengeTextData);
-                        let processedSienge = [];
-                        if (siengeRows.length > 2) {
-                            for (let i = 2; i < siengeRows.length; i++) {
-                                const row = siengeRows[i];
-                                if (row[0] && row[1] && row[2]) processedSienge.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
-                                if (row[4] && row[5] && row[6]) processedSienge.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
-                                if (row[8] && row[9] && row[10]) processedSienge.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
+                    // Função auxiliar para processar as linhas do CSV
+                    const processRows = (rows, sourceName) => {
+                        console.log(`[${sourceName}] Processando ${rows.length} linhas de dados brutos.`);
+                        let processedData = [];
+                        if (rows.length > 2) {
+                            for (let i = 2; i < rows.length; i++) {
+                                const row = rows[i];
+                                
+                                try {
+                                    // Helper para verificar se a célula tem conteúdo real (não apenas espaços)
+                                    const hasContent = (cell) => cell != null && cell.trim() !== '';
+
+                                    // Processa CC 1000 (Data: A, Plano: B, Valor: C -> Índices 0, 1, 2)
+                                    if (hasContent(row[0]) && hasContent(row[1]) && hasContent(row[2])) {
+                                        processedData.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
+                                    }
+                                    // Processa CC 2000 (Data: E, Plano: F, Valor: G -> Índices 4, 5, 6)
+                                    if (hasContent(row[4]) && hasContent(row[5]) && hasContent(row[6])) {
+                                        processedData.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
+                                    }
+                                    // Processa CC 2002 (Data: I, Plano: J, Valor: K -> Índices 8, 9, 10)
+                                    if (hasContent(row[8]) && hasContent(row[9]) && hasContent(row[10])) {
+                                        processedData.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
+                                    }
+                                } catch (e) {
+                                    console.error(`[${sourceName}] Erro ao processar a linha ${i+1}:`, row, e);
+                                }
                             }
                         }
-                        allData = processedSienge;
+                        console.log(`[${sourceName}] Total de ${processedData.length} registros processados com sucesso.`);
+                        return processedData;
+                    };
+                    
+                    // Adiciona um parâmetro para evitar cache
+                    const cacheBuster = new Date().getTime();
+                    const siengeDataUrlWithCacheBuster = `${siengeDataUrl}&_=${cacheBuster}`;
+                    const excludedDataSourceUrlWithCacheBuster = `${excludedDataSourceUrl}&_=${cacheBuster}`;
+
+
+                    // Carrega dados principais (Sienge)
+                    try {
+                        console.log("Buscando dados principais de:", siengeDataUrlWithCacheBuster);
+                        const siengeTextData = await d3.text(siengeDataUrlWithCacheBuster);
+                        const siengeRows = d3.csvParseRows(siengeTextData);
+                        allData = processRows(siengeRows, "Sienge");
                         allDates.push(...allData.map(d => parseBrDate(d.data)));
                     } catch (error) {
                          console.error('Erro ao carregar dados principais (Sienge):', error);
@@ -421,18 +452,10 @@
 
                     // Carrega dados dos planos excluídos
                     try {
-                        const excludedTextData = await d3.text(excludedDataSourceUrl);
+                        console.log("Buscando dados de excluídos de:", excludedDataSourceUrlWithCacheBuster);
+                        const excludedTextData = await d3.text(excludedDataSourceUrlWithCacheBuster);
                         const excludedRows = d3.csvParseRows(excludedTextData);
-                        let processedExcluded = [];
-                        if (excludedRows.length > 2) {
-                             for (let i = 2; i < excludedRows.length; i++) {
-                                 const row = excludedRows[i];
-                                 if (row[0] && row[1] && row[2]) processedExcluded.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
-                                 if (row[4] && row[5] && row[6]) processedExcluded.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
-                                 if (row[8] && row[9] && row[10]) processedExcluded.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
-                             }
-                        }
-                        excludedData = processedExcluded;
+                        excludedData = processRows(excludedRows, "Excluídos");
                         allDates.push(...excludedData.map(d => parseBrDate(d.data)));
                     } catch (error) {
                         console.error('Erro ao carregar dados dos planos excluídos:', error);
@@ -853,3 +876,4 @@
     </script>
 </body>
 </html>
+ 
