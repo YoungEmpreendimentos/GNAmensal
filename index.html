@@ -504,16 +504,20 @@
             }
 
             function updateDashboard() {
-                const startDate = document.getElementById('start-date-filter').value;
-                const endDate = document.getElementById('end-date-filter').value;
+                const startDateValue = document.getElementById('start-date-filter').value;
+                const endDateValue = document.getElementById('end-date-filter').value;
                 
                 let dateFilteredData = allData;
                 let dateFilteredExcludedData = excludedData;
 
-                if (startDate && endDate) {
-                    const start = new Date(startDate);
-                    const end = new Date(endDate);
-                    end.setHours(23, 59, 59, 999);
+                if (startDateValue && endDateValue) {
+                    // CORREÇÃO: Analisa as datas de forma segura para evitar problemas de fuso horário.
+                    const [yearS, monthS, dayS] = startDateValue.split('-').map(Number);
+                    const start = new Date(yearS, monthS - 1, dayS);
+
+                    const [yearE, monthE, dayE] = endDateValue.split('-').map(Number);
+                    const end = new Date(yearE, monthE - 1, dayE);
+                    end.setHours(23, 59, 59, 999); // Garante que o dia final seja incluído completamente
 
                     const filterByDate = d => {
                         const itemDate = parseBrDate(d.data);
@@ -709,7 +713,7 @@
 
                 let dataForTable = data;
                 if (!selectedPlans.includes('all')) {
-                    dataForTable = data.filter(d => selectedPlans.includes(d.planoFinanceiro));
+                    dataForTable = dataForTable.filter(d => selectedPlans.includes(d.planoFinanceiro));
                 }
                 
                 dataForTable.sort((a, b) => parseBrDate(b.data) - parseBrDate(a.data));
@@ -876,4 +880,3 @@
     </script>
 </body>
 </html>
- 
