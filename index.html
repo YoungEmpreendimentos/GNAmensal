@@ -394,7 +394,7 @@
                 <p>
                     <strong>Observação:</strong> Para uma análise focada nos custos operacionais, os seguintes planos financeiros foram movidos da visualização principal para a aba "Planos Financeiros Excluídos": 
                     PIS/COFINS/CSLL, Repasses de gestão, Distribuição de dividendos, Recolhimento de impostos, IRPJ e todos os Pró-Labores individuais (que não sejam da diretoria).
-                    A soma dos Pró-Labores da Diretoria (buscada da planilha "Posição de Caixa") foi adicionada ao CC 2000.
+                    A soma dos Pró-Labores de Eduardo, Octavio e Caroline (buscada da planilha "Posição de Caixa") foi consolidada e adicionada ao Centro de Custo 2000.
                 </p>
             </footer>
         </div>
@@ -415,10 +415,12 @@
             const summaryPanel = document.getElementById('summary-panel');
 
             const exclusionKeywords = [
-                'pis', 'cofins', 'csll',
-                'repasses de gestão',
+                'pis/cofins/csll - s/ faturamento/receita',
+                'repasses de gestão de carteira de permuta física',
+                'cofins (s/ faturamento/receita)',
                 'distribuição de dividendos',
-                'recolhimento',
+                'pis (s/ faturamento/receita)',
+                'recolhimento de pis, cofins e csll',
                 'irpj'
             ];
             
@@ -566,7 +568,7 @@
                     dateFilteredAllData.push({
                         centroCusto: '2000',
                         data: endDateValue, 
-                        planoFinanceiro: 'Soma Pró-Labore (Diretoria)',
+                        planoFinanceiro: 'Soma Pró-Labore (Eduardo, Octavio e Caroline)',
                         valor: proLaboreSumForPeriod
                     });
                 }
