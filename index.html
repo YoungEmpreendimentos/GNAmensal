@@ -246,6 +246,18 @@
             color: var(--color-success);
         }
         
+        /* Estilo para destacar a linha da soma do pró-labore */
+        .highlight-row {
+            background-color: #fff9f4 !important; /* Um laranja bem claro */
+        }
+        .highlight-row td {
+            font-weight: 700;
+            color: var(--color-dark-gray-main);
+        }
+        .highlight-row td:last-child {
+            color: var(--color-orange) !important;
+        }
+
         /* Aba Total Geral */
         .total-geral-container {
             text-align: center;
@@ -320,6 +332,24 @@
             justify-content: center; align-items: center; z-index: 9999;
             font-size: 1.5em; color: var(--color-orange); font-weight: 600;
         }
+
+        /* Rodapé */
+        footer {
+            padding: 20px 25px;
+            margin-top: 10px;
+            background-color: var(--color-light-gray);
+            border-top: 1px solid var(--color-medium-gray);
+            border-radius: 0 0 12px 12px;
+            font-size: 0.9em;
+            color: var(--color-text);
+        }
+        footer p {
+            margin: 0;
+            line-height: 1.5;
+        }
+        footer strong {
+            color: var(--color-dark-gray-text);
+        }
     </style>
 </head>
 <body>
@@ -359,24 +389,40 @@
                 <div id="excluded-chart" class="tab-pane"></div>
                 <div id="chart" class="tab-pane"></div>
             </main>
+            
+            <footer>
+                <p>
+                    <strong>Observação:</strong> Para uma análise focada nos custos operacionais, os seguintes planos financeiros foram movidos da visualização principal para a aba "Planos Financeiros Excluídos": 
+                    PIS/COFINS/CSLL, Repasses de gestão, Distribuição de dividendos, Recolhimento de impostos, IRPJ e todos os Pró-Labores individuais (que não sejam da diretoria).
+                    A soma dos Pró-Labores da Diretoria (buscada da planilha "Posição de Caixa") foi adicionada ao CC 2000.
+                </p>
+            </footer>
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // URL da planilha de dados diários (Sienge)
             const siengeDataUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1286766302&single=true&output=csv';
+            const proLaboreUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTkiy-n--R8fAEJJQD2Axayu6LbLSOfYLZsJxQ49xDp560RUzUtH1CeivSvAO71fmE_6sbSAfHvud2Z/pub?gid=1605452357&single=true&output=csv';
             
-            // URL da planilha de planos excluídos
-            const excludedDataSourceUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9cEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=518334165&single=true&output=csv';
-
-            let allData = [];
-            let excludedData = [];
+            let initialAllData = []; 
+            let initialExcludedData = [];
+            let directorsProLaboreData = [];
             let currentTab = 'cc1000';
 
             const loader = document.getElementById('loader');
             const pageWrapper = document.querySelector('.page-wrapper');
             const summaryPanel = document.getElementById('summary-panel');
+
+            const exclusionKeywords = [
+                'pis', 'cofins', 'csll',
+                'repasses de gestão',
+                'distribuição de dividendos',
+                'recolhimento',
+                'irpj'
+            ];
+            
+            const proLaboreDirectorsNames = ['caroline montado volpato', 'eduardo pereira tebaldi', 'octávio portal tebaldi'];
 
             function parseCurrency(currencyString) {
                 if (!currencyString || typeof currencyString !== 'string') return 0;
@@ -396,71 +442,52 @@
             async function loadAndProcessData() {
                 try {
                     let allDates = [];
+                    const cacheBuster = new Date().getTime();
+                    
+                    const siengeTextData = await d3.text(`${siengeDataUrl}&_=${cacheBuster}`);
+                    const siengeRows = d3.csvParseRows(siengeTextData);
+                    let rawSiengeData = [];
+                    if (siengeRows.length > 2) {
+                        for (let i = 2; i < siengeRows.length; i++) {
+                            const row = siengeRows[i];
+                            const hasContent = (cell) => cell != null && cell.trim() !== '';
+                            if (hasContent(row[0]) && hasContent(row[1]) && hasContent(row[2])) rawSiengeData.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
+                            if (hasContent(row[4]) && hasContent(row[5]) && hasContent(row[6])) rawSiengeData.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
+                            if (hasContent(row[8]) && hasContent(row[9]) && hasContent(row[10])) rawSiengeData.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
+                        }
+                    }
 
-                    // Função auxiliar para processar as linhas do CSV
-                    const processRows = (rows, sourceName) => {
-                        console.log(`[${sourceName}] Processando ${rows.length} linhas de dados brutos.`);
-                        let processedData = [];
-                        if (rows.length > 2) {
-                            for (let i = 2; i < rows.length; i++) {
-                                const row = rows[i];
-                                
-                                try {
-                                    // Helper para verificar se a célula tem conteúdo real (não apenas espaços)
-                                    const hasContent = (cell) => cell != null && cell.trim() !== '';
-
-                                    // Processa CC 1000 (Data: A, Plano: B, Valor: C -> Índices 0, 1, 2)
-                                    if (hasContent(row[0]) && hasContent(row[1]) && hasContent(row[2])) {
-                                        processedData.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
-                                    }
-                                    // Processa CC 2000 (Data: E, Plano: F, Valor: G -> Índices 4, 5, 6)
-                                    if (hasContent(row[4]) && hasContent(row[5]) && hasContent(row[6])) {
-                                        processedData.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
-                                    }
-                                    // Processa CC 2002 (Data: I, Plano: J, Valor: K -> Índices 8, 9, 10)
-                                    if (hasContent(row[8]) && hasContent(row[9]) && hasContent(row[10])) {
-                                        processedData.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
-                                    }
-                                } catch (e) {
-                                    console.error(`[${sourceName}] Erro ao processar a linha ${i+1}:`, row, e);
+                    const proLaboreTextData = await d3.text(`${proLaboreUrl}&_=${cacheBuster}`);
+                    const proLaboreRows = d3.csvParseRows(proLaboreTextData);
+                    if (proLaboreRows.length > 1) {
+                         for (let i = 1; i < proLaboreRows.length; i++) {
+                            const row = proLaboreRows[i];
+                            const hasContent = (cell) => cell != null && cell.trim() !== '';
+                            if (hasContent(row[0]) && hasContent(row[3]) && hasContent(row[5]) && hasContent(row[6])) {
+                                const plano = row[5].trim().toLowerCase();
+                                const credor = row[3].trim().toLowerCase();
+                                if (plano === 'retirada de pró-labore' && proLaboreDirectorsNames.includes(credor)) {
+                                    directorsProLaboreData.push({
+                                        centroCusto: '2000',
+                                        data: row[0].trim(),
+                                        planoFinanceiro: `Pró-Labore ${row[3].trim()}`,
+                                        valor: parseCurrency(row[6])
+                                    });
                                 }
                             }
-                        }
-                        console.log(`[${sourceName}] Total de ${processedData.length} registros processados com sucesso.`);
-                        return processedData;
-                    };
+                         }
+                    }
                     
-                    // Adiciona um parâmetro para evitar cache
-                    const cacheBuster = new Date().getTime();
-                    const siengeDataUrlWithCacheBuster = `${siengeDataUrl}&_=${cacheBuster}`;
-                    const excludedDataSourceUrlWithCacheBuster = `${excludedDataSourceUrl}&_=${cacheBuster}`;
+                    rawSiengeData.forEach(item => {
+                        const plan = item.planoFinanceiro.toLowerCase().trim();
+                        if (plan.includes('pro-labore') || plan.includes('pró-labore') || exclusionKeywords.some(keyword => plan.includes(keyword))) {
+                            initialExcludedData.push(item);
+                        } else {
+                            initialAllData.push(item);
+                        }
+                    });
 
-
-                    // Carrega dados principais (Sienge)
-                    try {
-                        console.log("Buscando dados principais de:", siengeDataUrlWithCacheBuster);
-                        const siengeTextData = await d3.text(siengeDataUrlWithCacheBuster);
-                        const siengeRows = d3.csvParseRows(siengeTextData);
-                        allData = processRows(siengeRows, "Sienge");
-                        allDates.push(...allData.map(d => parseBrDate(d.data)));
-                    } catch (error) {
-                         console.error('Erro ao carregar dados principais (Sienge):', error);
-                         ['cc1000', 'cc2000', 'cc2002', 'total', 'chart'].forEach(tabId => {
-                             document.getElementById(tabId).innerHTML = `<p style="color: red;">Não foi possível carregar os dados principais. Verifique a URL da planilha "Dados Sienge".</p>`;
-                         });
-                    }
-
-                    // Carrega dados dos planos excluídos
-                    try {
-                        console.log("Buscando dados de excluídos de:", excludedDataSourceUrlWithCacheBuster);
-                        const excludedTextData = await d3.text(excludedDataSourceUrlWithCacheBuster);
-                        const excludedRows = d3.csvParseRows(excludedTextData);
-                        excludedData = processRows(excludedRows, "Excluídos");
-                        allDates.push(...excludedData.map(d => parseBrDate(d.data)));
-                    } catch (error) {
-                        console.error('Erro ao carregar dados dos planos excluídos:', error);
-                        document.getElementById('excluded').innerHTML = `<p style="color: red;">Não foi possível carregar os dados dos planos excluídos. Verifique a URL.</p>`;
-                    }
+                    allDates.push(...initialAllData.map(d => parseBrDate(d.data)), ...initialExcludedData.map(d => parseBrDate(d.data)), ...directorsProLaboreData.map(d => parseBrDate(d.data)));
                     
                     const validDates = allDates.filter(d => d && !isNaN(d.getTime()));
                     if(validDates.length > 0) {
@@ -507,49 +534,64 @@
                 const startDateValue = document.getElementById('start-date-filter').value;
                 const endDateValue = document.getElementById('end-date-filter').value;
                 
-                let dateFilteredData = allData;
-                let dateFilteredExcludedData = excludedData;
+                let dateFilteredAllData;
+                let dateFilteredExcludedData;
+                let dateFilteredDirectorsProLabore;
 
                 if (startDateValue && endDateValue) {
-                    // CORREÇÃO: Analisa as datas de forma segura para evitar problemas de fuso horário.
                     const [yearS, monthS, dayS] = startDateValue.split('-').map(Number);
                     const start = new Date(yearS, monthS - 1, dayS);
 
                     const [yearE, monthE, dayE] = endDateValue.split('-').map(Number);
                     const end = new Date(yearE, monthE - 1, dayE);
-                    end.setHours(23, 59, 59, 999); // Garante que o dia final seja incluído completamente
+                    end.setHours(23, 59, 59, 999);
 
                     const filterByDate = d => {
                         const itemDate = parseBrDate(d.data);
                         return itemDate && itemDate >= start && itemDate <= end;
                     };
 
-                    dateFilteredData = allData.filter(filterByDate);
-                    dateFilteredExcludedData = excludedData.filter(filterByDate);
+                    dateFilteredAllData = initialAllData.filter(filterByDate);
+                    dateFilteredExcludedData = initialExcludedData.filter(filterByDate);
+                    dateFilteredDirectorsProLabore = directorsProLaboreData.filter(filterByDate);
+                } else {
+                    dateFilteredAllData = [...initialAllData];
+                    dateFilteredExcludedData = [...initialExcludedData];
+                    dateFilteredDirectorsProLabore = [...directorsProLaboreData];
+                }
+
+                const proLaboreSumForPeriod = d3.sum(dateFilteredDirectorsProLabore, d => d.valor);
+
+                if (proLaboreSumForPeriod > 0) {
+                    dateFilteredAllData.push({
+                        centroCusto: '2000',
+                        data: endDateValue, 
+                        planoFinanceiro: 'Soma Pró-Labore (Diretoria)',
+                        valor: proLaboreSumForPeriod
+                    });
                 }
                 
-                // Decide qual painel de resumo renderizar
                 const isExcludedTab = currentTab === 'excluded' || currentTab === 'excluded-chart';
                 if (isExcludedTab) {
                     renderExcludedSummary(dateFilteredExcludedData);
                 } else {
-                    renderMainSummary(dateFilteredData);
+                    renderMainSummary(dateFilteredAllData);
                 }
 
                 switch (currentTab) {
                     case 'cc1000':
                     case 'cc2000':
                     case 'cc2002':
-                        renderCCTable(currentTab.replace('cc', ''), dateFilteredData);
+                        renderCCTable(currentTab.replace('cc', ''), dateFilteredAllData);
                         break;
                     case 'total':
-                        renderTotalGeral(dateFilteredData);
+                        renderTotalGeral(dateFilteredAllData);
                         break;
                     case 'excluded':
                         renderExcludedTab(dateFilteredExcludedData);
                         break;
                     case 'chart':
-                        renderComparisonChart(dateFilteredData);
+                        renderComparisonChart(dateFilteredAllData);
                         break;
                     case 'excluded-chart':
                         renderExcludedChart(dateFilteredExcludedData);
@@ -561,7 +603,10 @@
                 const startDate = document.getElementById('start-date-filter').value;
                 const endDate = document.getElementById('end-date-filter').value;
                 if (startDate && endDate) {
-                    const format = (dateStr) => new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR');
+                    const format = (dateStr) => {
+                        const [year, month, day] = dateStr.split('-');
+                        return `${day}/${month}/${year}`;
+                    };
                     return `${format(startDate)} a ${format(endDate)}`;
                 }
                 return 'Todo o Período';
@@ -657,9 +702,13 @@
                 let tableHTML = `<table><thead><tr><th>Plano Financeiro</th><th>Valor (${periodText})</th></tr></thead><tbody>`;
                 const groupedData = d3.rollup(dataForTable, v => d3.sum(v, d => d.valor), d => d.planoFinanceiro);
                 const sortedData = Array.from(groupedData.entries()).sort((a, b) => b[1] - a[1]);
+                
                 sortedData.forEach(([key, value]) => {
-                    tableHTML += `<tr><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
+                    const isProLaboreSum = key.toLowerCase().includes('soma pró-labore');
+                    const rowClass = isProLaboreSum ? 'class="highlight-row"' : '';
+                    tableHTML += `<tr ${rowClass}><td>${key}</td><td>${formatCurrency(value)}</td></tr>`;
                 });
+
                 tableHTML += '</tbody></table>';
                 tableContainer.innerHTML = tableHTML;
             }
@@ -677,7 +726,7 @@
 
                 let dataForView = data;
                 if (!selectedPlans.includes('all')) {
-                    dataForView = data.filter(d => selectedPlans.includes(d.planoFinanceiro));
+                    dataForView = dataForView.filter(d => selectedPlans.includes(d.planoFinanceiro));
                 }
                 
                 const periodText = getPeriodText();
@@ -694,7 +743,9 @@
                 flatData.sort((a, b) => b.valor - a.valor);
 
                 flatData.forEach(item => {
-                    tableHTML += `<tr><td>${item.plano}</td><td>${item.centroCusto}</td><td>${formatCurrency(item.valor)}</td></tr>`;
+                    const isProLaboreSum = item.plano.toLowerCase().includes('soma pró-labore');
+                    const rowClass = isProLaboreSum ? 'class="highlight-row"' : '';
+                    tableHTML += `<tr ${rowClass}><td>${item.plano}</td><td>${item.centroCusto}</td><td>${formatCurrency(item.valor)}</td></tr>`;
                 });
                 tableHTML += '</tbody></table>';
                 tableContainer.innerHTML = tableHTML;
@@ -804,10 +855,10 @@
             
             function renderExcludedChart(data) {
                 const chartContainer = document.getElementById('excluded-chart');
-                const uniqueCCs = ['Todos', ...new Set(excludedData.map(d => d.centroCusto))].sort();
+                const uniqueCCs = ['Todos', ...new Set(data.map(d => d.centroCusto))].sort();
 
                 const oldCcFilter = document.getElementById('excluded-chart-cc-filter');
-                const oldCcValue = oldCcFilter ? oldCcFilter.value : 'all';
+                const oldCcValue = oldCcFilter ? oldCcFilter.value : 'Todos';
 
                 chartContainer.innerHTML = `
                     <div class="filter-container" style="margin-bottom: 20px; flex-shrink: 0;">
