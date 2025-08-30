@@ -393,7 +393,7 @@
             <footer>
                 <p>
                     <strong>Observação:</strong> Para uma análise focada nos custos operacionais, os seguintes planos financeiros foram movidos da visualização principal para a aba "Planos Financeiros Excluídos": 
-                    PIS/COFINS/CSLL, Repasses de gestão, Distribuição de dividendos, Recolhimento de impostos, IRPJ e todos os Pró-Labores individuais (que não sejam da diretoria).
+                    PIS/COFINS/CSLL, Repasses de gestão, Distribuição de dividendos, Recolhimento de impostos, IRPJ, Mútuos, Participações e todos os Pró-Labores individuais (que não sejam da diretoria).
                     A soma dos Pró-Labores de Eduardo, Octavio e Caroline (buscada da planilha "Posição de Caixa") foi consolidada e adicionada ao Centro de Custo 2000.
                 </p>
             </footer>
@@ -415,13 +415,14 @@
             const summaryPanel = document.getElementById('summary-panel');
 
             const exclusionKeywords = [
-                'pis/cofins/csll - s/ faturamento/receita',
-                'repasses de gestão de carteira de permuta física',
-                'cofins (s/ faturamento/receita)',
-                'distribuição de dividendos',
-                'pis (s/ faturamento/receita)',
-                'recolhimento de pis, cofins e csll',
-                'irpj'
+                'pis', 'cofins', 'csll',
+                'repasses de gestão',
+                'dividendos',
+                'recolhimento de impostos',
+                'irpj',
+                'mútuo',
+                'participações',
+                'pró-labore', 'pro-labore'
             ];
             
             const proLaboreDirectorsNames = ['caroline montado volpato', 'eduardo pereira tebaldi', 'octávio portal tebaldi'];
@@ -441,11 +442,20 @@
                 return new Date(year, month - 1, day);
             }
 
+            // =======================================================================
+            // INÍCIO DA CORREÇÃO
+            // A lógica foi reestruturada para seguir a ordem correta de operações:
+            // 1. Carregar todos os dados da planilha Sienge.
+            // 2. Separar o que é operacional e o que deve ser excluído.
+            // 3. Carregar e processar a planilha de Pró-Labore.
+            // 4. Adicionar a soma dos Pró-Labores dos diretores aos dados operacionais.
+            // =======================================================================
             async function loadAndProcessData() {
                 try {
-                    let allDates = [];
                     const cacheBuster = new Date().getTime();
+                    let allDates = [];
                     
+                    // 1. Carrega todos os dados brutos da planilha Sienge
                     const siengeTextData = await d3.text(`${siengeDataUrl}&_=${cacheBuster}`);
                     const siengeRows = d3.csvParseRows(siengeTextData);
                     let rawSiengeData = [];
@@ -459,6 +469,18 @@
                         }
                     }
 
+                    // 2. Separa os dados da Sienge em operacionais e excluídos
+                    rawSiengeData.forEach(item => {
+                        const plan = item.planoFinanceiro.toLowerCase().trim();
+                        // Se o plano financeiro contiver qualquer uma das palavras-chave, vai para a lista de excluídos.
+                        if (exclusionKeywords.some(keyword => plan.includes(keyword))) {
+                            initialExcludedData.push(item);
+                        } else {
+                            initialAllData.push(item);
+                        }
+                    });
+
+                    // 3. Carrega e processa a planilha de Pró-Labore
                     const proLaboreTextData = await d3.text(`${proLaboreUrl}&_=${cacheBuster}`);
                     const proLaboreRows = d3.csvParseRows(proLaboreTextData);
                     if (proLaboreRows.length > 1) {
@@ -468,27 +490,26 @@
                             if (hasContent(row[0]) && hasContent(row[3]) && hasContent(row[5]) && hasContent(row[6])) {
                                 const plano = row[5].trim().toLowerCase();
                                 const credor = row[3].trim().toLowerCase();
-                                if (plano === 'retirada de pró-labore' && proLaboreDirectorsNames.includes(credor)) {
-                                    directorsProLaboreData.push({
-                                        centroCusto: '2000',
+
+                                if (plano.includes('pró-labore') || plano.includes('pro-labore')) {
+                                    const proLaboreItem = {
+                                        centroCusto: '2000', 
                                         data: row[0].trim(),
                                         planoFinanceiro: `Pró-Labore ${row[3].trim()}`,
                                         valor: parseCurrency(row[6])
-                                    });
+                                    };
+                                    // Separa os diretores (para somar) dos demais (para excluir)
+                                    if (proLaboreDirectorsNames.includes(credor)) {
+                                        directorsProLaboreData.push(proLaboreItem);
+                                    } else {
+                                        initialExcludedData.push(proLaboreItem);
+                                    }
                                 }
                             }
                          }
                     }
                     
-                    rawSiengeData.forEach(item => {
-                        const plan = item.planoFinanceiro.toLowerCase().trim();
-                        if (plan.includes('pro-labore') || plan.includes('pró-labore') || exclusionKeywords.some(keyword => plan.includes(keyword))) {
-                            initialExcludedData.push(item);
-                        } else {
-                            initialAllData.push(item);
-                        }
-                    });
-
+                    // Coleta todas as datas para definir os filtros iniciais
                     allDates.push(...initialAllData.map(d => parseBrDate(d.data)), ...initialExcludedData.map(d => parseBrDate(d.data)), ...directorsProLaboreData.map(d => parseBrDate(d.data)));
                     
                     const validDates = allDates.filter(d => d && !isNaN(d.getTime()));
@@ -500,7 +521,7 @@
                     }
                     
                     setupEventListeners();
-                    updateDashboard();
+                    updateDashboard(); // A mágica acontece aqui, onde os dados já separados são renderizados
 
                     loader.style.display = 'none';
                     pageWrapper.style.display = 'flex';
@@ -510,6 +531,9 @@
                     loader.textContent = 'Falha ao carregar os dados. Verifique as URLs das planilhas.';
                 }
             }
+            // =======================================================================
+            // FIM DA CORREÇÃO
+            // =======================================================================
 
             function setupEventListeners() {
                 document.getElementById('start-date-filter').addEventListener('change', updateDashboard);
@@ -561,11 +585,14 @@
                     dateFilteredExcludedData = [...initialExcludedData];
                     dateFilteredDirectorsProLabore = [...directorsProLaboreData];
                 }
-
+                
+                // 4. Adiciona a soma do Pró-Labore dos diretores como uma única linha aos dados operacionais
                 const proLaboreSumForPeriod = d3.sum(dateFilteredDirectorsProLabore, d => d.valor);
+                
+                const dataForRender = [...dateFilteredAllData];
 
                 if (proLaboreSumForPeriod > 0) {
-                    dateFilteredAllData.push({
+                    dataForRender.push({
                         centroCusto: '2000',
                         data: endDateValue, 
                         planoFinanceiro: 'Soma Pró-Labore (Eduardo, Octavio e Caroline)',
@@ -577,23 +604,23 @@
                 if (isExcludedTab) {
                     renderExcludedSummary(dateFilteredExcludedData);
                 } else {
-                    renderMainSummary(dateFilteredAllData);
+                    renderMainSummary(dataForRender);
                 }
 
                 switch (currentTab) {
                     case 'cc1000':
                     case 'cc2000':
                     case 'cc2002':
-                        renderCCTable(currentTab.replace('cc', ''), dateFilteredAllData);
+                        renderCCTable(currentTab.replace('cc', ''), dataForRender);
                         break;
                     case 'total':
-                        renderTotalGeral(dateFilteredAllData);
+                        renderTotalGeral(dataForRender);
                         break;
                     case 'excluded':
                         renderExcludedTab(dateFilteredExcludedData);
                         break;
                     case 'chart':
-                        renderComparisonChart(dateFilteredAllData);
+                        renderComparisonChart(dataForRender);
                         break;
                     case 'excluded-chart':
                         renderExcludedChart(dateFilteredExcludedData);
@@ -933,3 +960,4 @@
     </script>
 </body>
 </html>
+
