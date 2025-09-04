@@ -414,16 +414,24 @@
             const pageWrapper = document.querySelector('.page-wrapper');
             const summaryPanel = document.getElementById('summary-panel');
 
-            const exclusionKeywords = [
-                'pis', 'cofins', 'csll',
-                'repasses de gestão',
-                'dividendos',
-                'recolhimento de impostos',
-                'irpj',
-                'mútuo',
-                'participações',
-                'pró-labore', 'pro-labore'
-            ];
+            // ================== CORREÇÃO APLICADA AQUI ==================
+            // A lista foi trocada por nomes exatos para evitar exclusões incorretas.
+            // A lógica agora verifica por nomes idênticos.
+            const exclusionExactPhrases = [
+                'PIS, COFINS e CSLL (sobre faturamento/receita)',
+                'Repasses de gestão de carteira de permuta física',
+                'COFINS (sobre faturamento/receita)',
+                'PIS (sobre faturamento/receita)',
+                'Distribuição de Dividendos',
+                'Recolhimento de PIS, COFINS e CSLL',
+                'IRPJ (sobre faturamento/receita)',
+                'Mútuo',
+                'Participações'
+            ].map(p => p.toLowerCase()); // Padroniza para minúsculas para comparação
+
+            // "Pró-labore" continua como palavra-chave pois aparece com nomes diferentes.
+            const proLaboreKeywords = ['pró-labore', 'pro-labore'];
+            // ================== FIM DA CORREÇÃO ==================
             
             const proLaboreDirectorsNames = ['caroline montado volpato', 'eduardo pereira tebaldi', 'octávio portal tebaldi'];
 
@@ -442,14 +450,6 @@
                 return new Date(year, month - 1, day);
             }
 
-            // =======================================================================
-            // INÍCIO DA CORREÇÃO
-            // A lógica foi reestruturada para seguir a ordem correta de operações:
-            // 1. Carregar todos os dados da planilha Sienge.
-            // 2. Separar o que é operacional e o que deve ser excluído.
-            // 3. Carregar e processar a planilha de Pró-Labore.
-            // 4. Adicionar a soma dos Pró-Labores dos diretores aos dados operacionais.
-            // =======================================================================
             async function loadAndProcessData() {
                 try {
                     const cacheBuster = new Date().getTime();
@@ -472,8 +472,10 @@
                     // 2. Separa os dados da Sienge em operacionais e excluídos
                     rawSiengeData.forEach(item => {
                         const plan = item.planoFinanceiro.toLowerCase().trim();
-                        // Se o plano financeiro contiver qualquer uma das palavras-chave, vai para a lista de excluídos.
-                        if (exclusionKeywords.some(keyword => plan.includes(keyword))) {
+                        
+                        // Verifica se o plano corresponde a um nome exato na lista de exclusão
+                        // OU se contém as palavras-chave de pró-labore.
+                        if (exclusionExactPhrases.includes(plan) || proLaboreKeywords.some(keyword => plan.includes(keyword))) {
                             initialExcludedData.push(item);
                         } else {
                             initialAllData.push(item);
@@ -531,9 +533,6 @@
                     loader.textContent = 'Falha ao carregar os dados. Verifique as URLs das planilhas.';
                 }
             }
-            // =======================================================================
-            // FIM DA CORREÇÃO
-            // =======================================================================
 
             function setupEventListeners() {
                 document.getElementById('start-date-filter').addEventListener('change', updateDashboard);
