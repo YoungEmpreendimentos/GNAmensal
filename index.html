@@ -113,7 +113,7 @@
             font-family: var(--font-family);
             font-size: 0.95em;
             cursor: pointer;
-            transition: border-color 0.3s, box-shadow 0.3s;
+            transition: border-color: 0.3s, box-shadow: 0.3s;
         }
 
         select:hover, input[type="date"]:hover, .multiselect-btn:hover {
@@ -400,7 +400,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // A URL da planilha "Gastos Fixos" em "Posição de Caixa"
+            // A URL da planilha "Gastos Fixos" em "Posição de Caixa" é a única fonte de dados.
             const gastosFixosUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTkiy-n--R8fAEJJQD2Axayu6LbLSOfYLZsJxQ49xDp560RUzUtH1CeivSvAO71fmE_6sbSAfHvud2Z/pub?gid=1605452357&single=true&output=csv';
             
             let initialAllData = []; 
@@ -464,27 +464,31 @@
 
                     // --- Etapa 2: Classificar todos os dados coletados e filtrados ---
                     relevantRawData.forEach(item => {
-                        // A verificação estrita que descartava linhas com dados faltantes foi removida
-                        // para garantir que todos os valores sejam somados corretamente.
+                         // Ignora linhas que não têm valor monetário para não distorcer a soma.
+                        if (!item.valor) {
+                            return;
+                        }
 
-                        const plan = (item.planoFinanceiro || '').toLowerCase().trim(); // Trata casos onde o plano é nulo
+                        const plan = (item.planoFinanceiro || '').toLowerCase().trim();
                         const credor = (item.credor || '').toLowerCase().trim();
                         
                         const isProLabore = plan.includes('pró-labore') || plan.includes('pro-labore');
                         const isDirector = proLaboreDirectorsNames.includes(credor);
-                        const isExcludedPlan = exclusionPlans.includes(plan);
+                        const isSpecificallyExcluded = exclusionPlans.includes(plan);
 
+                        // Regra 1: O Pró-Labore dos diretores é um caso especial.
                         if (isProLabore && isDirector) {
-                            // Pró-labore de Diretor: vai para a soma especial
+                            // Ele é separado para ser somado e adicionado apenas ao CC 2000.
                             directorsProLaboreData.push({
                                 ...item,
                                 planoFinanceiro: `Pró-Labore (Diretoria) ${item.credor.trim()}`
                             });
-                        } else if (isProLabore || isExcludedPlan) {
-                            // Pró-labore (não-diretor) OU um dos planos da lista de exclusão: vai para Excluídos
+                        // Regra 2: Qualquer outro Pró-Labore (que não seja de diretor) OU um plano da lista de exclusão...
+                        } else if (isProLabore || isSpecificallyExcluded) {
+                            // ...é movido para a lista de "Excluídos".
                             initialExcludedData.push(item);
                         } else {
-                            // Se não for nenhum dos anteriores, é um dado principal para os painéis
+                            // Regra 3: Todo o restante é mantido como custo normal do seu respectivo Centro de Custo.
                             initialAllData.push(item);
                         }
                     });
@@ -937,5 +941,4 @@
     </script>
 </body>
 </html>
-
 
