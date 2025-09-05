@@ -414,24 +414,16 @@
             const pageWrapper = document.querySelector('.page-wrapper');
             const summaryPanel = document.getElementById('summary-panel');
 
-            // ================== CORREÇÃO APLICADA AQUI ==================
-            // A lista foi trocada por nomes exatos para evitar exclusões incorretas.
-            // A lógica agora verifica por nomes idênticos.
-            const exclusionExactPhrases = [
-                'PIS, COFINS e CSLL (sobre faturamento/receita)',
-                'Repasses de gestão de carteira de permuta física',
-                'COFINS (sobre faturamento/receita)',
-                'PIS (sobre faturamento/receita)',
-                'Distribuição de Dividendos',
-                'Recolhimento de PIS, COFINS e CSLL',
-                'IRPJ (sobre faturamento/receita)',
-                'Mútuo',
-                'Participações'
-            ].map(p => p.toLowerCase()); // Padroniza para minúsculas para comparação
-
-            // "Pró-labore" continua como palavra-chave pois aparece com nomes diferentes.
-            const proLaboreKeywords = ['pró-labore', 'pro-labore'];
-            // ================== FIM DA CORREÇÃO ==================
+            const exclusionKeywords = [
+                'pis', 'cofins', 'csll',
+                'repasses de gestão',
+                'dividendos',
+                'recolhimento de impostos',
+                'irpj',
+                'mútuo',
+                'participações',
+                'pró-labore', 'pro-labore'
+            ];
             
             const proLaboreDirectorsNames = ['caroline montado volpato', 'eduardo pereira tebaldi', 'octávio portal tebaldi'];
 
@@ -455,7 +447,6 @@
                     const cacheBuster = new Date().getTime();
                     let allDates = [];
                     
-                    // 1. Carrega todos os dados brutos da planilha Sienge
                     const siengeTextData = await d3.text(`${siengeDataUrl}&_=${cacheBuster}`);
                     const siengeRows = d3.csvParseRows(siengeTextData);
                     let rawSiengeData = [];
@@ -469,20 +460,20 @@
                         }
                     }
 
-                    // 2. Separa os dados da Sienge em operacionais e excluídos
                     rawSiengeData.forEach(item => {
                         const plan = item.planoFinanceiro.toLowerCase().trim();
-                        
-                        // Verifica se o plano corresponde a um nome exato na lista de exclusão
-                        // OU se contém as palavras-chave de pró-labore.
-                        if (exclusionExactPhrases.includes(plan) || proLaboreKeywords.some(keyword => plan.includes(keyword))) {
+                        if (exclusionKeywords.some(keyword => plan.includes(keyword))) {
                             initialExcludedData.push(item);
                         } else {
                             initialAllData.push(item);
                         }
                     });
 
-                    // 3. Carrega e processa a planilha de Pró-Labore
+                    // =======================================================================
+                    // INÍCIO DA CORREÇÃO
+                    // A lógica agora processa a segunda planilha apenas para encontrar
+                    // os Pró-Labores dos diretores e ignora o resto.
+                    // =======================================================================
                     const proLaboreTextData = await d3.text(`${proLaboreUrl}&_=${cacheBuster}`);
                     const proLaboreRows = d3.csvParseRows(proLaboreTextData);
                     if (proLaboreRows.length > 1) {
@@ -493,25 +484,21 @@
                                 const plano = row[5].trim().toLowerCase();
                                 const credor = row[3].trim().toLowerCase();
 
-                                if (plano.includes('pró-labore') || plano.includes('pro-labore')) {
-                                    const proLaboreItem = {
+                                if ((plano.includes('pró-labore') || plano.includes('pro-labore')) && proLaboreDirectorsNames.includes(credor)) {
+                                    directorsProLaboreData.push({
                                         centroCusto: '2000', 
                                         data: row[0].trim(),
-                                        planoFinanceiro: `Pró-Labore ${row[3].trim()}`,
+                                        planoFinanceiro: `Pró-Labore (Diretoria) ${row[3].trim()}`, // Nomeado para clareza
                                         valor: parseCurrency(row[6])
-                                    };
-                                    // Separa os diretores (para somar) dos demais (para excluir)
-                                    if (proLaboreDirectorsNames.includes(credor)) {
-                                        directorsProLaboreData.push(proLaboreItem);
-                                    } else {
-                                        initialExcludedData.push(proLaboreItem);
-                                    }
+                                    });
                                 }
                             }
                          }
                     }
+                     // =======================================================================
+                    // FIM DA CORREÇÃO
+                    // =======================================================================
                     
-                    // Coleta todas as datas para definir os filtros iniciais
                     allDates.push(...initialAllData.map(d => parseBrDate(d.data)), ...initialExcludedData.map(d => parseBrDate(d.data)), ...directorsProLaboreData.map(d => parseBrDate(d.data)));
                     
                     const validDates = allDates.filter(d => d && !isNaN(d.getTime()));
@@ -523,7 +510,7 @@
                     }
                     
                     setupEventListeners();
-                    updateDashboard(); // A mágica acontece aqui, onde os dados já separados são renderizados
+                    updateDashboard();
 
                     loader.style.display = 'none';
                     pageWrapper.style.display = 'flex';
@@ -585,7 +572,6 @@
                     dateFilteredDirectorsProLabore = [...directorsProLaboreData];
                 }
                 
-                // 4. Adiciona a soma do Pró-Labore dos diretores como uma única linha aos dados operacionais
                 const proLaboreSumForPeriod = d3.sum(dateFilteredDirectorsProLabore, d => d.valor);
                 
                 const dataForRender = [...dateFilteredAllData];
