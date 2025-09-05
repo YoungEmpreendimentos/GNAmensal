@@ -392,9 +392,7 @@
             
             <footer>
                 <p>
-                    <strong>Observação:</strong> Para uma análise focada nos custos operacionais, os seguintes planos financeiros foram movidos da visualização principal para a aba "Planos Financeiros Excluídos": 
-                    PIS/COFINS/CSLL, Repasses de gestão, Distribuição de dividendos, Recolhimento de impostos, IRPJ, Mútuos, Participações e todos os Pró-Labores individuais (que não sejam da diretoria).
-                    A soma dos Pró-Labores de Eduardo, Octavio e Caroline (buscada da planilha "Posição de Caixa") foi consolidada e adicionada ao Centro de Custo 2000.
+                    <strong>Observação:</strong> Para uma análise focada nos custos operacionais, planos financeiros como PIS/COFINS, repasses e dividendos, além de todos os Pró-Labores (exceto da diretoria), foram movidos para a aba "Planos Financeiros Excluídos". A soma dos Pró-Labores dos diretores (Eduardo, Octavio e Caroline) foi consolidada e adicionada ao Centro de Custo 2000.
                 </p>
             </footer>
         </div>
@@ -466,26 +464,24 @@
 
                     // --- Etapa 2: Classificar todos os dados coletados e filtrados ---
                     relevantRawData.forEach(item => {
-                        // Ignorar linhas que não tenham plano financeiro ou data
-                        if (!item.planoFinanceiro || !item.data) return;
+                        // A verificação estrita que descartava linhas com dados faltantes foi removida
+                        // para garantir que todos os valores sejam somados corretamente.
 
-                        const plan = item.planoFinanceiro.toLowerCase().trim();
+                        const plan = (item.planoFinanceiro || '').toLowerCase().trim(); // Trata casos onde o plano é nulo
                         const credor = (item.credor || '').toLowerCase().trim();
                         
-                        // Verifica se é um pró-labore de um dos diretores
-                        const isDirectorProLabore = (plan.includes('pró-labore') || plan.includes('pro-labore')) && proLaboreDirectorsNames.includes(credor);
-
-                        // Verifica se o plano financeiro corresponde exatamente a um da lista de exclusão
+                        const isProLabore = plan.includes('pró-labore') || plan.includes('pro-labore');
+                        const isDirector = proLaboreDirectorsNames.includes(credor);
                         const isExcludedPlan = exclusionPlans.includes(plan);
 
-                        if (isDirectorProLabore) {
-                            // Adiciona aos dados especiais de pró-labore para serem somados
+                        if (isProLabore && isDirector) {
+                            // Pró-labore de Diretor: vai para a soma especial
                             directorsProLaboreData.push({
                                 ...item,
                                 planoFinanceiro: `Pró-Labore (Diretoria) ${item.credor.trim()}`
                             });
-                        } else if (isExcludedPlan) {
-                            // Se o plano está na lista de exclusão, vai para a aba "Excluídos"
+                        } else if (isProLabore || isExcludedPlan) {
+                            // Pró-labore (não-diretor) OU um dos planos da lista de exclusão: vai para Excluídos
                             initialExcludedData.push(item);
                         } else {
                             // Se não for nenhum dos anteriores, é um dado principal para os painéis
@@ -941,4 +937,5 @@
     </script>
 </body>
 </html>
+
 
