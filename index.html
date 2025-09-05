@@ -402,8 +402,8 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const siengeDataUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDWx_07uP6nfagmQZEBTQ-MXA9YcEJT5QsZlnt9_F0hx9serB61Dpo9htuR6zGE94tpSzuvFzOIsVW/pub?gid=1286766302&single=true&output=csv';
-            const proLaboreUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTkiy-n--R8fAEJJQD2Axayu6LbLSOfYLZsJxQ49xDp560RUzUtH1CeivSvAO71fmE_6sbSAfHvud2Z/pub?gid=1605452357&single=true&output=csv';
+            // A URL da planilha "Gastos Fixos" em "Posição de Caixa"
+            const gastosFixosUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTkiy-n--R8fAEJJQD2Axayu6LbLSOfYLZsJxQ49xDp560RUzUtH1CeivSvAO71fmE_6sbSAfHvud2Z/pub?gid=1605452357&single=true&output=csv';
             
             let initialAllData = []; 
             let initialExcludedData = [];
@@ -414,15 +414,13 @@
             const pageWrapper = document.querySelector('.page-wrapper');
             const summaryPanel = document.getElementById('summary-panel');
 
-            const exclusionKeywords = [
-                'pis', 'cofins', 'csll',
-                'repasses de gestão',
-                'dividendos',
-                'recolhimento de impostos',
-                'irpj',
-                'mútuo',
-                'participações',
-                'pró-labore', 'pro-labore'
+            const exclusionPlans = [
+                'pis, cofins e csll (sobre faturamento/receita)',
+                'repasses de gestão de carteira de permuta física',
+                'cofins (sobre faturamento/receita)',
+                'pis (sobre faturamento/receita)',
+                'distribuição de dividendos',
+                'recolhimento de pis, cofins e csll'
             ];
             
             const proLaboreDirectorsNames = ['caroline montado volpato', 'eduardo pereira tebaldi', 'octávio portal tebaldi'];
@@ -446,63 +444,60 @@
                 try {
                     const cacheBuster = new Date().getTime();
                     let allDates = [];
-                    
-                    const siengeTextData = await d3.text(`${siengeDataUrl}&_=${cacheBuster}`);
-                    const siengeRows = d3.csvParseRows(siengeTextData);
-                    let rawSiengeData = [];
-                    if (siengeRows.length > 2) {
-                        for (let i = 2; i < siengeRows.length; i++) {
-                            const row = siengeRows[i];
-                            const hasContent = (cell) => cell != null && cell.trim() !== '';
-                            if (hasContent(row[0]) && hasContent(row[1]) && hasContent(row[2])) rawSiengeData.push({ centroCusto: '1000', data: row[0].trim(), planoFinanceiro: row[1].trim(), valor: parseCurrency(row[2]) });
-                            if (hasContent(row[4]) && hasContent(row[5]) && hasContent(row[6])) rawSiengeData.push({ centroCusto: '2000', data: row[4].trim(), planoFinanceiro: row[5].trim(), valor: parseCurrency(row[6]) });
-                            if (hasContent(row[8]) && hasContent(row[9]) && hasContent(row[10])) rawSiengeData.push({ centroCusto: '2002', data: row[8].trim(), planoFinanceiro: row[9].trim(), valor: parseCurrency(row[10]) });
-                        }
-                    }
+                    let relevantRawData = [];
 
-                    rawSiengeData.forEach(item => {
-                        const plan = item.planoFinanceiro.toLowerCase().trim();
-                        if (exclusionKeywords.some(keyword => plan.includes(keyword))) {
-                            initialExcludedData.push(item);
-                        } else {
-                            initialAllData.push(item);
+                    // --- Etapa 1: Ler e filtrar TODOS os dados da planilha "Gastos Fixos" ---
+                    const gastosFixosTextData = await d3.text(`${gastosFixosUrl}&_=${cacheBuster}`);
+                    const gastosFixosData = d3.csvParse(gastosFixosTextData);
+
+                    gastosFixosData.forEach(row => {
+                        const cc = row['Centro de Custo']?.trim();
+                        // Apenas processar as linhas que pertencem aos centros de custo de interesse
+                        if (['1000', '2000', '2002'].includes(cc)) {
+                            relevantRawData.push({
+                                centroCusto: cc,
+                                data: row['Data']?.trim(),
+                                planoFinanceiro: row['Plano financeiro']?.trim(),
+                                valor: parseCurrency(row['Valor']),
+                                credor: row['Credor']?.trim()
+                            });
                         }
                     });
 
-                    // =======================================================================
-                    // INÍCIO DA CORREÇÃO
-                    // A lógica agora processa a segunda planilha apenas para encontrar
-                    // os Pró-Labores dos diretores e ignora o resto.
-                    // =======================================================================
-                    const proLaboreTextData = await d3.text(`${proLaboreUrl}&_=${cacheBuster}`);
-                    const proLaboreRows = d3.csvParseRows(proLaboreTextData);
-                    if (proLaboreRows.length > 1) {
-                         for (let i = 1; i < proLaboreRows.length; i++) {
-                            const row = proLaboreRows[i];
-                            const hasContent = (cell) => cell != null && cell.trim() !== '';
-                            if (hasContent(row[0]) && hasContent(row[3]) && hasContent(row[5]) && hasContent(row[6])) {
-                                const plano = row[5].trim().toLowerCase();
-                                const credor = row[3].trim().toLowerCase();
+                    // --- Etapa 2: Classificar todos os dados coletados e filtrados ---
+                    relevantRawData.forEach(item => {
+                        // Ignorar linhas que não tenham plano financeiro ou data
+                        if (!item.planoFinanceiro || !item.data) return;
 
-                                if ((plano.includes('pró-labore') || plano.includes('pro-labore')) && proLaboreDirectorsNames.includes(credor)) {
-                                    directorsProLaboreData.push({
-                                        centroCusto: '2000', 
-                                        data: row[0].trim(),
-                                        planoFinanceiro: `Pró-Labore (Diretoria) ${row[3].trim()}`, // Nomeado para clareza
-                                        valor: parseCurrency(row[6])
-                                    });
-                                }
-                            }
-                         }
-                    }
-                     // =======================================================================
-                    // FIM DA CORREÇÃO
-                    // =======================================================================
+                        const plan = item.planoFinanceiro.toLowerCase().trim();
+                        const credor = (item.credor || '').toLowerCase().trim();
+                        
+                        // Verifica se é um pró-labore de um dos diretores
+                        const isDirectorProLabore = (plan.includes('pró-labore') || plan.includes('pro-labore')) && proLaboreDirectorsNames.includes(credor);
+
+                        // Verifica se o plano financeiro corresponde exatamente a um da lista de exclusão
+                        const isExcludedPlan = exclusionPlans.includes(plan);
+
+                        if (isDirectorProLabore) {
+                            // Adiciona aos dados especiais de pró-labore para serem somados
+                            directorsProLaboreData.push({
+                                ...item,
+                                planoFinanceiro: `Pró-Labore (Diretoria) ${item.credor.trim()}`
+                            });
+                        } else if (isExcludedPlan) {
+                            // Se o plano está na lista de exclusão, vai para a aba "Excluídos"
+                            initialExcludedData.push(item);
+                        } else {
+                            // Se não for nenhum dos anteriores, é um dado principal para os painéis
+                            initialAllData.push(item);
+                        }
+                    });
                     
+                    // --- Etapa 3: Configuração final do dashboard e renderização ---
                     allDates.push(...initialAllData.map(d => parseBrDate(d.data)), ...initialExcludedData.map(d => parseBrDate(d.data)), ...directorsProLaboreData.map(d => parseBrDate(d.data)));
                     
                     const validDates = allDates.filter(d => d && !isNaN(d.getTime()));
-                    if(validDates.length > 0) {
+                    if (validDates.length > 0) {
                         const minDate = new Date(Math.min.apply(null, validDates));
                         const maxDate = new Date(Math.max.apply(null, validDates));
                         document.getElementById('start-date-filter').value = minDate.toISOString().split('T')[0];
@@ -517,9 +512,10 @@
 
                 } catch (error) {
                     console.error('Erro geral ao carregar os dados:', error);
-                    loader.textContent = 'Falha ao carregar os dados. Verifique as URLs das planilhas.';
+                    loader.textContent = 'Falha ao carregar os dados. Verifique a URL da planilha "Gastos Fixos".';
                 }
             }
+
 
             function setupEventListeners() {
                 document.getElementById('start-date-filter').addEventListener('change', updateDashboard);
@@ -878,7 +874,7 @@
                     <div class="filter-container" style="margin-bottom: 20px; flex-shrink: 0;">
                         <label for="excluded-chart-cc-filter">Visualizar Centro de Custo:</label>
                         <select id="excluded-chart-cc-filter">
-                             ${uniqueCCs.map(cc => `<option value="${cc}">${cc === 'Todos' ? 'Todos' : `CC ${cc}`}</option>`).join('')}
+                            ${uniqueCCs.map(cc => `<option value="${cc}">${cc === 'Todos' ? 'Todos' : `CC ${cc}`}</option>`).join('')}
                         </select>
                     </div>
                     <div id="plotly-excluded-chart" style="width: 100%; height: 100%; flex-grow: 1;"></div>`;
