@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GNA Mensal - Centro de Custos</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Financeiro - Posição de Caixa</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-800">
   <div class="container mx-auto p-4">
-    <h1 class="text-2xl font-bold mb-4">GNA Mensal - Centro de Custos</h1>
+    <h1 class="text-2xl font-bold mb-4">Dashboard Financeiro - Posição de Caixa</h1>
 
     <!-- Filtros -->
     <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -17,17 +17,17 @@
         <label for="periodFilter" class="block font-medium">Período</label>
         <select id="periodFilter" class="w-full border rounded p-2">
           <option value="all">Todos</option>
-          <option value="2025-07">Jul/2025</option>
-          <option value="2025-08">Ago/2025</option>
-          <option value="2025-09">Set/2025</option>
+          <option value="2025-04">Abr/2025</option>
+          <option value="2025-05">Mai/2025</option>
+          <option value="2025-06">Jun/2025</option>
         </select>
       </div>
       <div>
         <label for="planoFinanceiroFilter" class="block font-medium">Plano Financeiro</label>
         <select id="planoFinanceiroFilter" class="w-full border rounded p-2" multiple>
-          <option value="receitas">Receitas</option>
-          <option value="despesas">Despesas</option>
-          <option value="investimentos">Investimentos</option>
+          <option value="Receitas">Receitas</option>
+          <option value="Despesas">Despesas</option>
+          <option value="Investimentos">Investimentos</option>
         </select>
       </div>
     </div>
@@ -37,7 +37,6 @@
       <ul class="flex space-x-4">
         <li><button onclick="showTab('tabela')" class="py-2 px-4 font-medium">Tabela CC</button></li>
         <li><button onclick="showTab('total')" class="py-2 px-4 font-medium">Total Geral</button></li>
-        <li><button onclick="showTab('excluidos')" class="py-2 px-4 font-medium">Excluídos</button></li>
         <li><button onclick="showTab('comparacao')" class="py-2 px-4 font-medium">Comparação</button></li>
       </ul>
     </div>
@@ -49,12 +48,8 @@
     <div id="total" class="tab-content hidden">
       <div id="totalGeral"></div>
     </div>
-    <div id="excluidos" class="tab-content hidden">
-      <div id="excludedTab"></div>
-    </div>
     <div id="comparacao" class="tab-content hidden">
       <div id="comparisonChart" class="h-96"></div>
-      <div id="excludedChart" class="h-96 mt-6"></div>
     </div>
   </div>
 
@@ -64,31 +59,47 @@
       document.getElementById(tabId).classList.remove('hidden');
     }
 
+    // 🔧 Busca e trata os dados da aba "operacionais"
     async function getSheetData() {
-      // 🔧 Aqui você conecta ao Google Sheets (fetch ou API)
-      // Exemplo mockado para teste:
-      return [
-        { cc: "1000", periodo: "2025-07", plano: "receitas", valor: 5000 },
-        { cc: "2000", periodo: "2025-07", plano: "despesas", valor: -3000 },
-        { cc: "2002", periodo: "2025-07", plano: "despesas", valor: -1500 },
-        { cc: "3000", periodo: "2025-07", plano: "receitas", valor: 4000 }, // será filtrado fora
+      // Aqui você precisa apontar para a API do Google Sheets ou backend
+      // Para exemplo, simulo os dados como no Excel
+      const rows = [
+        ["01/04/2025", "2000", "Young Incorporações e Construções Ltda", "Conservação e Limpeza", "R$ 1.000,00"],
+        ["01/04/2025", "2000", "Young Incorporações e Construções Ltda", "Materiais de Escritório", "R$ 865,00"],
+        ["01/04/2025", "2000", "Young Incorporações e Construções Ltda", "Salários e Ordenados", "R$ 7.687,60"],
+        ["01/04/2025", "1000", "Young Empreendimentos e Participações Ltda", "Receitas de Aluguel", "R$ 20.000,00"],
+        ["01/04/2025", "2002", "Young Incorporações e Construções Ltda", "Serviços Terceirizados", "R$ 15.000,00"],
+        ["01/04/2025", "3000", "Young Incorporações e Construções Ltda", "Outros CC", "R$ 50.000,00"] // será ignorado
       ];
+
+      return rows.map(r => ({
+        data: r[0],
+        cc: String(r[1]),
+        empresa: r[2],
+        plano: r[3],
+        valor: parseFloat(
+          r[4]
+            .replace("R$", "")
+            .replace(/\./g, "")
+            .replace(",", ".")
+        ) || 0
+      }));
     }
 
     async function updateDashboard() {
       try {
         let sheetData = await getSheetData();
 
-        // 🔎 Filtrar apenas CC 1000, 2000 e 2002
+        // 🔎 Considera apenas CC 1000, 2000 e 2002
         const centrosValidos = ["1000", "2000", "2002"];
-        sheetData = sheetData.filter(row => centrosValidos.includes(String(row.cc)));
+        sheetData = sheetData.filter(row => centrosValidos.includes(row.cc));
 
-        // 🔧 Aplicar filtros extras
+        // Filtros adicionais
         const periodFilter = document.getElementById("periodFilter").value;
         const planoFilter = Array.from(document.getElementById("planoFinanceiroFilter").selectedOptions).map(opt => opt.value);
 
         if (periodFilter !== "all") {
-          sheetData = sheetData.filter(row => row.periodo === periodFilter);
+          sheetData = sheetData.filter(row => row.data.startsWith(periodFilter));
         }
         if (planoFilter.length > 0) {
           sheetData = sheetData.filter(row => planoFilter.includes(row.plano));
@@ -97,9 +108,7 @@
         // Renderizações
         renderCCTable(sheetData);
         renderTotalGeral(sheetData);
-        renderExcludedTab(sheetData);
         renderComparisonChart(sheetData);
-        renderExcludedChart(sheetData);
       } catch (err) {
         console.error("Erro ao atualizar dashboard:", err);
       }
@@ -108,15 +117,17 @@
     function renderCCTable(data) {
       let html = `<table class="min-w-full border">
         <thead><tr class="bg-gray-200">
+          <th class="border px-2 py-1">Data</th>
           <th class="border px-2 py-1">CC</th>
-          <th class="border px-2 py-1">Período</th>
+          <th class="border px-2 py-1">Empresa</th>
           <th class="border px-2 py-1">Plano</th>
           <th class="border px-2 py-1">Valor</th>
         </tr></thead><tbody>`;
       data.forEach(row => {
         html += `<tr>
+          <td class="border px-2 py-1">${row.data}</td>
           <td class="border px-2 py-1">${row.cc}</td>
-          <td class="border px-2 py-1">${row.periodo}</td>
+          <td class="border px-2 py-1">${row.empresa}</td>
           <td class="border px-2 py-1">${row.plano}</td>
           <td class="border px-2 py-1 text-right">${row.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
         </tr>`;
@@ -131,11 +142,6 @@
         `<p class="text-lg font-bold">Total Geral: ${total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>`;
     }
 
-    function renderExcludedTab(data) {
-      // Exemplo: mostra registros que seriam "excluídos"
-      document.getElementById("excludedTab").innerHTML = `<p>Todos os demais CCs foram excluídos do cálculo.</p>`;
-    }
-
     function renderComparisonChart(data) {
       const grouped = {};
       data.forEach(row => {
@@ -148,20 +154,6 @@
       Plotly.newPlot("comparisonChart", [{
         x: cc, y: valores, type: "bar"
       }], { title: "Comparação por Centro de Custo" });
-    }
-
-    function renderExcludedChart(data) {
-      const grouped = {};
-      data.forEach(row => {
-        if (!grouped[row.plano]) grouped[row.plano] = 0;
-        grouped[row.plano] += row.valor;
-      });
-      const planos = Object.keys(grouped);
-      const valores = Object.values(grouped);
-
-      Plotly.newPlot("excludedChart", [{
-        labels: planos, values: valores, type: "pie"
-      }], { title: "Distribuição por Plano Financeiro" });
     }
 
     // Atualiza ao carregar
