@@ -135,7 +135,7 @@
             </div>
             <div class="filter-item">
                 <input type="checkbox" id="include-prolabore-filter" checked>
-                <label for="include-prolabore-filter">Incluir Pró-labore Diretoria (CC 2000)</label>
+                <label for="include-prolabore-filter">Incluir Pró-labore Diretoria (CC 1000)</label>
             </div>
         </div>
 
@@ -176,7 +176,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const loader = document.getElementById('loader');
     const pageWrapper = document.querySelector('.page-wrapper');
     
-    const proLaboreDirectorsNames = ['caroline montado volpato', 'eduardo pereira tebaldi', 'octávio portal tebaldi'];
+    const proLaboreDirectorsNames = ['caroline montado volpato', 'octávio portal tebaldi'];
 
     function parseCurrency(currencyString) {
         if (!currencyString || typeof currencyString !== 'string') return 0;
@@ -207,7 +207,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 valor: parseCurrency(d.Valor)
             })).filter(d => d.valor);
 
-            // Retirar o pró-labore pago do CC 1000
             operacionaisData = operacionaisData.filter(d => 
                 !(d.centroCusto === '1000' && (d.planoFinanceiro.toLowerCase().includes('pró-labore') || d.planoFinanceiro.toLowerCase().includes('pro-labore')))
             );
@@ -219,7 +218,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 credor: d.Credor,
                 planoFinanceiro: d['Plano financeiro'],
                 valor: parseCurrency(d.Valor)
-            })).filter(d => d.valor);
+            })).filter(d => {
+                const isProLabore = (d['Plano financeiro'] || '').toLowerCase().includes('pró-labore');
+                const isCaroline = (d.Credor || '').toLowerCase().trim() === 'caroline montado volpato';
+                return !(isProLabore && isCaroline);
+            }).filter(d => d.valor);
+
 
             const gastosFixosTextData = await d3.text(gastosFixosUrl + '&_=' + cacheBuster);
             const gastosFixosData = d3.csvParse(gastosFixosTextData);
@@ -232,13 +236,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 const isProLabore = plan.includes('pró-labore') || plan.includes('pro-labore');
                 const isDirector = proLaboreDirectorsNames.includes(credor);
                 return isProLabore && isDirector;
-            }).map(row => ({
-                data: row['Data'] ? row['Data'].trim() : '',
-                centroCusto: '2000',
-                credor: row['Credor'] ? row['Credor'].trim() : '',
-                planoFinanceiro: 'Pró-Labore (Diretoria) ' + (row['Credor'] ? row['Credor'].trim() : ''),
-                valor: parseCurrency(row['Valor'])
-            }));
+            }).map(row => {
+                const credor = row['Credor'] ? row['Credor'].trim() : '';
+                let planoFinanceiro = 'Pró-Labore ' + credor;
+                 if (credor.toLowerCase() === 'caroline montado volpato') {
+                    planoFinanceiro = 'Pró-Labore ' + credor;
+                } else {
+                    planoFinanceiro = 'Pró-Labore (Diretoria) ' + credor;
+                }
+                return {
+                    data: row['Data'] ? row['Data'].trim() : '',
+                    centroCusto: '2000',
+                    credor: credor,
+                    planoFinanceiro: planoFinanceiro,
+                    valor: parseCurrency(row['Valor'])
+                }
+            });
             
             initialAllData = [...operacionaisData, ...directorsProLaboreData];
 
