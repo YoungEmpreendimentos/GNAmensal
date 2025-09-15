@@ -171,7 +171,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     let initialAllData = [];
     let initialExcludedData = [];
-    let directorsProLaboreData = [];
     let currentTab = 'cc1000';
 
     const loader = document.getElementById('loader');
@@ -200,13 +199,18 @@ document.addEventListener('DOMContentLoaded', function() {
             let allDates = [];
 
             const operacionaisTextData = await d3.text(operacionaisUrl + '&_=' + cacheBuster);
-            initialAllData = d3.csvParse(operacionaisTextData).map(d => ({
+            let operacionaisData = d3.csvParse(operacionaisTextData).map(d => ({
                 data: d.Data,
                 centroCusto: d['Centro de Custo'] ? d['Centro de Custo'].trim() : '',
                 credor: d.Credor,
                 planoFinanceiro: d['Plano financeiro'],
                 valor: parseCurrency(d.Valor)
             })).filter(d => d.valor);
+
+            // Retirar o pró-labore pago do CC 1000
+            operacionaisData = operacionaisData.filter(d => 
+                !(d.centroCusto === '1000' && (d.planoFinanceiro.toLowerCase().includes('pró-labore') || d.planoFinanceiro.toLowerCase().includes('pro-labore')))
+            );
 
             const excluidosTextData = await d3.text(excluidosUrl + '&_=' + cacheBuster);
             initialExcludedData = d3.csvParse(excluidosTextData).map(d => ({
@@ -220,7 +224,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const gastosFixosTextData = await d3.text(gastosFixosUrl + '&_=' + cacheBuster);
             const gastosFixosData = d3.csvParse(gastosFixosTextData);
 
-            directorsProLaboreData = gastosFixosData.filter(row => {
+            const directorsProLaboreData = gastosFixosData.filter(row => {
                 const valor = parseCurrency(row['Valor']);
                 if (!valor) return false;
                 const plan = (row['Plano financeiro'] || '').toLowerCase().trim();
@@ -236,7 +240,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 valor: parseCurrency(row['Valor'])
             }));
             
-            allDates.push(...initialAllData.map(d => parseBrDate(d.data)), ...initialExcludedData.map(d => parseBrDate(d.data)), ...directorsProLaboreData.map(d => parseBrDate(d.data)));
+            initialAllData = [...operacionaisData, ...directorsProLaboreData];
+
+            allDates.push(...initialAllData.map(d => parseBrDate(d.data)), ...initialExcludedData.map(d => parseBrDate(d.data)));
             
             const validDates = allDates.filter(d => d && !isNaN(d.getTime()));
             if (validDates.length > 0) {
@@ -285,7 +291,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         let dateFilteredAllData;
         let dateFilteredExcludedData;
-        let dateFilteredDirectorsProLabore;
 
         if (startDateValue && endDateValue) {
             const start = new Date(startDateValue + 'T00:00:00');
@@ -298,23 +303,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
             dateFilteredAllData = initialAllData.filter(filterByDate);
             dateFilteredExcludedData = initialExcludedData.filter(filterByDate);
-            dateFilteredDirectorsProLabore = directorsProLaboreData.filter(filterByDate);
         } else {
             dateFilteredAllData = [...initialAllData];
             dateFilteredExcludedData = [...initialExcludedData];
-            dateFilteredDirectorsProLabore = [...directorsProLaboreData];
         }
-        
-        const proLaboreSumForPeriod = d3.sum(dateFilteredDirectorsProLabore, d => d.valor);
         
         const dataForRender = [...dateFilteredAllData];
 
-        if (proLaboreSumForPeriod > 0 && includeProLabore) {
+        if (includeProLabore) {
             dataForRender.push({
-                centroCusto: '2000',
+                centroCusto: '1000',
                 data: endDateValue, 
                 planoFinanceiro: 'Soma Pró-Labore (Diretoria)',
-                valor: proLaboreSumForPeriod
+                valor: 30911.97,
+                credor: ''
             });
         }
         
