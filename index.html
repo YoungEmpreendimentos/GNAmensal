@@ -188,8 +188,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function parseBrDate(dateStr) {
-        if (!dateStr || !/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) return null;
-        const [day, month, year] = dateStr.split('/');
+        if (!dateStr) return null;
+        const trimmedDateStr = dateStr.trim();
+        if (!/^\d{2}\/\d{2}\/\d{4}$/.test(trimmedDateStr)) return null;
+        const [day, month, year] = trimmedDateStr.split('/');
         return new Date(year, month - 1, day);
     }
 
@@ -200,7 +202,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const operacionaisTextData = await d3.text(operacionaisUrl + '&_=' + cacheBuster);
             let operacionaisData = d3.csvParse(operacionaisTextData).map(d => ({
-                data: d.Data,
+                data: d.Data ? d.Data.trim() : '',
                 centroCusto: d['Centro de Custo'] ? d['Centro de Custo'].trim() : '',
                 credor: d.Credor,
                 planoFinanceiro: d['Plano financeiro'],
@@ -213,14 +215,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const excluidosTextData = await d3.text(excluidosUrl + '&_=' + cacheBuster);
             initialExcludedData = d3.csvParse(excluidosTextData).map(d => ({
-                data: d.Data,
+                data: d.Data ? d.Data.trim() : '',
                 centroCusto: d['Centro de Custo'] ? d['Centro de Custo'].trim() : '',
                 credor: d.Credor,
                 planoFinanceiro: d['Plano financeiro'],
                 valor: parseCurrency(d.Valor)
             })).filter(d => {
-                const isProLabore = (d['Plano financeiro'] || '').toLowerCase().includes('pró-labore');
-                const isCaroline = (d.Credor || '').toLowerCase().trim() === 'caroline montado volpato';
+                const isProLabore = (d.planoFinanceiro || '').toLowerCase().includes('pró-labore');
+                const isCaroline = (d.credor || '').toLowerCase().trim() === 'caroline montado volpato';
                 return !(isProLabore && isCaroline);
             }).filter(d => d.valor);
 
