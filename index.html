@@ -167,7 +167,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // URLs
     const operacionaisUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTkiy-n--R8fAEJJQD2Axayu6LbLSOfYLZsJxQ49xDp560RUzUtH1CeivSvAO71fmE_6sbSAfHvud2Z/pub?gid=974816377&single=true&output=csv';
     const excluidosUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTkiy-n--R8fAEJJQD2Axayu6LbLSOfYLZsJxQ49xDp560RUzUtH1CeivSvAO71fmE_6sbSAfHvud2Z/pub?gid=239610435&single=true&output=csv';
-    const gastosFixosUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTkiy-n--R8fAEJJQD2Axayu6LbLSOfYLZsJxQ49xDp560RUzUtH1CeivSvAO71fmE_6sbSAfHvud2Z/pub?gid=1605452357&single=true&output=csv';
     
     let initialAllData = [];
     let initialExcludedData = [];
@@ -175,8 +174,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const loader = document.getElementById('loader');
     const pageWrapper = document.querySelector('.page-wrapper');
-    
-    const proLaboreDirectorsNames = ['caroline montado volpato', 'octávio portal tebaldi'];
 
     function parseCurrency(currencyString) {
         if (!currencyString || typeof currencyString !== 'string') return 0;
@@ -201,17 +198,13 @@ document.addEventListener('DOMContentLoaded', function() {
             let allDates = [];
 
             const operacionaisTextData = await d3.text(operacionaisUrl + '&_=' + cacheBuster);
-            let operacionaisData = d3.csvParse(operacionaisTextData).map(d => ({
+            initialAllData = d3.csvParse(operacionaisTextData).map(d => ({
                 data: d.Data ? d.Data.trim() : '',
                 centroCusto: d['Centro de Custo'] ? d['Centro de Custo'].trim() : '',
                 credor: d.Credor,
                 planoFinanceiro: d['Plano financeiro'],
                 valor: parseCurrency(d.Valor)
             })).filter(d => d.valor);
-
-            operacionaisData = operacionaisData.filter(d => 
-                !(d.centroCusto === '1000' && (d.planoFinanceiro.toLowerCase().includes('pró-labore') || d.planoFinanceiro.toLowerCase().includes('pro-labore')))
-            );
 
             const excluidosTextData = await d3.text(excluidosUrl + '&_=' + cacheBuster);
             initialExcludedData = d3.csvParse(excluidosTextData).map(d => ({
@@ -225,37 +218,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const isCaroline = (d.credor || '').toLowerCase().trim() === 'caroline montado volpato';
                 return !(isProLabore && isCaroline);
             }).filter(d => d.valor);
-
-
-            const gastosFixosTextData = await d3.text(gastosFixosUrl + '&_=' + cacheBuster);
-            const gastosFixosData = d3.csvParse(gastosFixosTextData);
-
-            const directorsProLaboreData = gastosFixosData.filter(row => {
-                const valor = parseCurrency(row['Valor']);
-                if (!valor) return false;
-                const plan = (row['Plano financeiro'] || '').toLowerCase().trim();
-                const credor = (row['Credor'] || '').toLowerCase().trim();
-                const isProLabore = plan.includes('pró-labore') || plan.includes('pro-labore');
-                const isDirector = proLaboreDirectorsNames.includes(credor);
-                return isProLabore && isDirector;
-            }).map(row => {
-                const credor = row['Credor'] ? row['Credor'].trim() : '';
-                let planoFinanceiro = 'Pró-Labore ' + credor;
-                 if (credor.toLowerCase() === 'caroline montado volpato') {
-                    planoFinanceiro = 'Pró-Labore ' + credor;
-                } else {
-                    planoFinanceiro = 'Pró-Labore (Diretoria) ' + credor;
-                }
-                return {
-                    data: row['Data'] ? row['Data'].trim() : '',
-                    centroCusto: '2000',
-                    credor: credor,
-                    planoFinanceiro: planoFinanceiro,
-                    valor: parseCurrency(row['Valor'])
-                }
-            });
-            
-            initialAllData = [...operacionaisData, ...directorsProLaboreData];
 
             allDates.push(...initialAllData.map(d => parseBrDate(d.data)), ...initialExcludedData.map(d => parseBrDate(d.data)));
             
