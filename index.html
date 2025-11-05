@@ -233,8 +233,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const proLaboreTextData = await d3.text(proLaboreUrl + '&_=' + cacheBuster);
             initialProLaboreData = d3.csvParse(proLaboreTextData).map(d => ({
                 data: d.Data ? d.Data.trim() : '',
-                // Certifique-se que o nome da coluna é "Valor" na sua planilha
-                valor: parseCurrency(d.Valor) 
+                // --- CORREÇÃO AQUI ---
+                // A coluna na sua planilha de Pró-Labore chama-se "Total", não "Valor"
+                valor: parseCurrency(d.Total) 
             })).filter(d => d.valor && d.data); // Filtra linhas sem data ou valor
 
             // Adiciona todas as datas (das 3 fontes) para definir os filtros min/max
