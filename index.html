@@ -311,11 +311,42 @@ document.addEventListener('DOMContentLoaded', function() {
         const dataForRender = [...dateFilteredAllData];
 
         if (includeProLabore) {
+            // --- LÓGICA MODIFICADA PARA PRÓ-LABORE CUMULATIVO ---
+            const proLaboreStartDate = new Date(2025, 3, 1); // 1 de Abril de 2025 (JS Mês 3)
+            const proLaboreMonthlyAmount = 30911.97;
+            let proLaboreTotalValue = 0;
+
+            // O endDateValue já está definido no topo da função updateDashboard
+            if (endDateValue) {
+                // Usamos T23:59:59 para garantir que o último dia do mês seja incluído
+                const filterEndDate = new Date(endDateValue + 'T23:59:59'); 
+
+                // Só calcula se a data final do filtro for a partir do início do pró-labore
+                if (filterEndDate >= proLaboreStartDate) {
+                    const endYear = filterEndDate.getFullYear();
+                    const endMonth = filterEndDate.getMonth(); // 0-11
+
+                    const startYear = proLaboreStartDate.getFullYear();
+                    const startMonth = proLaboreStartDate.getMonth(); // 3 (Abril)
+
+                    // Calcula a diferença total de meses
+                    // (AnoFinal - AnoInicial) * 12 + (MêsFinal - MêsInicial)
+                    const monthDiff = (endYear - startYear) * 12 + (endMonth - startMonth);
+                    
+                    // Adiciona 1 para incluir o primeiro mês (ex: Abril a Abril é 0 diff, mas 1 mês)
+                    const numMonths = monthDiff + 1;
+                    
+                    proLaboreTotalValue = numMonths * proLaboreMonthlyAmount;
+                }
+                // Se filterEndDate < proLaboreStartDate, o valor permanece 0, o que está correto.
+            }
+            // --- FIM DA LÓGICA MODIFICADA ---
+
             dataForRender.push({
                 centroCusto: '1000',
                 data: endDateValue, 
                 planoFinanceiro: 'Soma Pró-Labore (Diretoria)',
-                valor: 30911.97,
+                valor: proLaboreTotalValue, // <-- Valor calculado
                 credor: ''
             });
         }
