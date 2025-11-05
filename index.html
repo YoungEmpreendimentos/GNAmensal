@@ -311,7 +311,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const dataForRender = [...dateFilteredAllData];
 
         if (includeProLabore) {
-            // --- LÓGICA MODIFICADA PARA PRÓ-LABORE CUMULATIVO ---
+            // --- LÓGICA MODIFICADA PARA PRÓ-LABORE CONDICIONAL ---
             const proLaboreStartDate = new Date(2025, 3, 1); // 1 de Abril de 2025 (JS Mês 3)
             const proLaboreMonthlyAmount = 30911.97;
             let proLaboreTotalValue = 0;
@@ -323,20 +323,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Só calcula se a data final do filtro for a partir do início do pró-labore
                 if (filterEndDate >= proLaboreStartDate) {
-                    const endYear = filterEndDate.getFullYear();
-                    const endMonth = filterEndDate.getMonth(); // 0-11
-
-                    const startYear = proLaboreStartDate.getFullYear();
-                    const startMonth = proLaboreStartDate.getMonth(); // 3 (Abril)
-
-                    // Calcula a diferença total de meses
-                    // (AnoFinal - AnoInicial) * 12 + (MêsFinal - MêsInicial)
-                    const monthDiff = (endYear - startYear) * 12 + (endMonth - startMonth);
                     
-                    // Adiciona 1 para incluir o primeiro mês (ex: Abril a Abril é 0 diff, mas 1 mês)
-                    const numMonths = monthDiff + 1;
-                    
-                    proLaboreTotalValue = numMonths * proLaboreMonthlyAmount;
+                    // A Lógica CUMULATIVA aplica-se APENAS à aba 'Total Geral'
+                    if (currentTab === 'total') {
+                        const endYear = filterEndDate.getFullYear();
+                        const endMonth = filterEndDate.getMonth(); // 0-11
+
+                        const startYear = proLaboreStartDate.getFullYear();
+                        const startMonth = proLaboreStartDate.getMonth(); // 3 (Abril)
+
+                        // Calcula a diferença total de meses
+                        // (AnoFinal - AnoInicial) * 12 + (MêsFinal - MêsInicial)
+                        const monthDiff = (endYear - startYear) * 12 + (endMonth - startMonth);
+                        
+                        // Adiciona 1 para incluir o primeiro mês (ex: Abril a Abril é 0 diff, mas 1 mês)
+                        const numMonths = monthDiff + 1;
+                        
+                        proLaboreTotalValue = numMonths * proLaboreMonthlyAmount;
+                    } 
+                    // Para todas as OUTRAS abas (ex: CC 1000), mostrar apenas o valor mensal fixo
+                    else {
+                        proLaboreTotalValue = proLaboreMonthlyAmount;
+                    }
                 }
                 // Se filterEndDate < proLaboreStartDate, o valor permanece 0, o que está correto.
             }
