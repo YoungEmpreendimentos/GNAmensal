@@ -311,42 +311,50 @@ document.addEventListener('DOMContentLoaded', function() {
         const dataForRender = [...dateFilteredAllData];
 
         if (includeProLabore) {
-            // --- LÓGICA MODIFICADA PARA PRÓ-LABORE CONDICIONAL ---
+            // --- LÓGICA MODIFICADA PARA PRÓ-LABORE BASEADO NO PERÍODO ---
             const proLaboreStartDate = new Date(2025, 3, 1); // 1 de Abril de 2025 (JS Mês 3)
             const proLaboreMonthlyAmount = 30911.97;
             let proLaboreTotalValue = 0;
 
-            // O endDateValue já está definido no topo da função updateDashboard
-            if (endDateValue) {
-                // Usamos T23:59:59 para garantir que o último dia do mês seja incluído
+            // Precisamos de ambas as datas para este cálculo
+            if (startDateValue && endDateValue) {
+                const filterStartDate = new Date(startDateValue + 'T00:00:00');
                 const filterEndDate = new Date(endDateValue + 'T23:59:59'); 
 
-                // Só calcula se a data final do filtro for a partir do início do pró-labore
+                // Se a data final do filtro for ANTES do início do pró-labore, o valor é sempre 0
                 if (filterEndDate >= proLaboreStartDate) {
                     
                     // A Lógica CUMULATIVA aplica-se às abas 'Total Geral' e 'CC 1000'
                     if (currentTab === 'total' || currentTab === 'cc1000') {
-                        const endYear = filterEndDate.getFullYear();
-                        const endMonth = filterEndDate.getMonth(); // 0-11
-
-                        const startYear = proLaboreStartDate.getFullYear();
-                        const startMonth = proLaboreStartDate.getMonth(); // 3 (Abril)
-
-                        // Calcula a diferença total de meses
-                        // (AnoFinal - AnoInicial) * 12 + (MêsFinal - MêsInicial)
-                        const monthDiff = (endYear - startYear) * 12 + (endMonth - startMonth);
+                        // A data de início efetiva para o cálculo é a *maior* entre o início do filtro e o início do pró-labore
+                        const effectiveCalcStartDate = new Date(Math.max(filterStartDate, proLaboreStartDate));
                         
-                        // Adiciona 1 para incluir o primeiro mês (ex: Abril a Abril é 0 diff, mas 1 mês)
-                        const numMonths = monthDiff + 1;
-                        
-                        proLaboreTotalValue = numMonths * proLaboreMonthlyAmount;
+                        // Garante que o período é válido (fim >= início efetivo)
+                        if (filterEndDate >= effectiveCalcStartDate) {
+                            const endYear = filterEndDate.getFullYear();
+                            const endMonth = filterEndDate.getMonth(); // 0-11
+
+                            const startYear = effectiveCalcStartDate.getFullYear();
+                            const startMonth = effectiveCalcStartDate.getMonth(); // 0-11
+
+                            // Calcula a diferença total de meses
+                            const monthDiff = (endYear - startYear) * 12 + (endMonth - startMonth);
+                            
+                            // Adiciona 1 para incluir o primeiro mês
+                            const numMonths = monthDiff + 1;
+                            
+                            proLaboreTotalValue = numMonths * proLaboreMonthlyAmount;
+                        } else {
+                            proLaboreTotalValue = 0;
+                        }
                     } 
                     // Para todas as OUTRAS abas (ex: CC 2000), mostrar apenas o valor mensal fixo
                     else {
+                        // (Valor fixo se o período terminar após o início do pro-labore)
                         proLaboreTotalValue = proLaboreMonthlyAmount;
                     }
                 }
-                // Se filterEndDate < proLaboreStartDate, o valor permanece 0, o que está correto.
+                // Se filterEndDate < proLaboreStartDate, o valor permanece 0.
             }
             // --- FIM DA LÓGICA MODIFICADA ---
 
