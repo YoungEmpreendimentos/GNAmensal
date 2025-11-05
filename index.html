@@ -324,8 +324,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Só calcula se a data final do filtro for a partir do início do pró-labore
                 if (filterEndDate >= proLaboreStartDate) {
                     
-                    // A Lógica CUMULATIVA aplica-se APENAS à aba 'Total Geral'
-                    if (currentTab === 'total') {
+                    // A Lógica CUMULATIVA aplica-se às abas 'Total Geral' e 'CC 1000'
+                    if (currentTab === 'total' || currentTab === 'cc1000') {
                         const endYear = filterEndDate.getFullYear();
                         const endMonth = filterEndDate.getMonth(); // 0-11
 
@@ -341,7 +341,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         proLaboreTotalValue = numMonths * proLaboreMonthlyAmount;
                     } 
-                    // Para todas as OUTRAS abas (ex: CC 1000), mostrar apenas o valor mensal fixo
+                    // Para todas as OUTRAS abas (ex: CC 2000), mostrar apenas o valor mensal fixo
                     else {
                         proLaboreTotalValue = proLaboreMonthlyAmount;
                     }
